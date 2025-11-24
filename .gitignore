@@ -1,0 +1,98 @@
+# DragonRuby Game Toolkit
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor/IDE Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.sublime-*
+*.sublime-workspace
+
+# DragonRuby specific
+builds/
+exceptions/
+logs/
+tmp/
+temp/
+*.zip
+*.tar.gz
+
+# Save files and user data
+saves/
+save_data/
+*.sav
+user_settings.txt
+
+# Development and debug files
+console-*.txt
+errors.txt
+crash.txt
+*.log
+debug/
+profiling/
+
+# Compiled/Generated files
+*.o
+*.so
+*.dll
+*.dylib
+*.exe
+
+# Package files
+*.pkg
+*.dmg
+*.app
+*.AppImage
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+
+# Documentation build files
+docs/_build/
+docs/_site/
+
+# Test coverage
+coverage/
+*.coverage
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Node modules (if using any JS tooling)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Python (if using any Python scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+env/
+venv/
+.venv/
+
+# Ruby bundler (if using gems)
+.bundle/
+vendor/bundle/
+Gemfile.lock
+
+# Custom build outputs
+dist/
+output/
+release/
+
+# Game specific ignores
+screenshots/
+recordings/
+*.replay
