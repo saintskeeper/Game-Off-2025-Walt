@@ -35,6 +35,7 @@ crash.txt
 *.log
 debug/
 profiling/
+.byebug_history
 
 # Compiled/Generated files
 *.o
@@ -58,10 +59,18 @@ profiling/
 # Documentation build files
 docs/_build/
 docs/_site/
+/.yardoc/
+/_yardoc/
+/doc/
+/rdoc/
 
 # Test coverage
 coverage/
 *.coverage
+/spec/reports/
+/spec/examples.txt
+/test/tmp/
+/test/version_tmp/
 
 # Environment variables
 .env
@@ -82,10 +91,26 @@ env/
 venv/
 .venv/
 
-# Ruby bundler (if using gems)
+# Ruby specific
+*.gem
+*.rbc
+/.config
+/InstalledFiles
+/pkg/
 .bundle/
 vendor/bundle/
 Gemfile.lock
+.repl_history
+*.bridgesupport
+.rvmrc
+.ruby-version
+.ruby-gemset
+
+# RubyMotion specific
+.dat*
+build/
+build-iPhoneOS/
+build-iPhoneSimulator/
 
 # Custom build outputs
 dist/
