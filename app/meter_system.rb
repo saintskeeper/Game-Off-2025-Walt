@@ -20,13 +20,12 @@ TILE_EFFECTS = {
   wreckage:   { wind_on_pass: 3,  hold_per_loop: 2 }
 }
 
-# Called when ship enters a new slot (passes over a tile position)
-# Triggers wind gain based on tile type if a tile is present
+# Called when ship enters a slot with a tile
+# Triggers wind gain based on tile type
 # Args:
 #   args - DragonRuby args object containing state
-#   slot_index - Index (0-11) of the slot the ship just entered
-def on_enter_slot(args, slot_index)
-  tile = args.state.loop_slots[slot_index]
+#   tile - Tile hash (or nil if empty slot)
+def on_enter_slot(args, tile)
   return unless tile  # Slot is empty, no effect
 
   # Look up the effect for this tile type
@@ -40,19 +39,24 @@ def on_enter_slot(args, slot_index)
   check_victory(args)
 end
 
-# Called when ship completes a full loop around the circle
+# Called when ship completes a full loop (returns to start)
 # Calculates hold gain based on base value + tile modifiers
-# Also triggers wave system and hand refill (if implemented)
+# Also triggers wave system and hand refill
 # Args:
 #   args - DragonRuby args object containing state
 def on_loop_complete(args)
   state = args.state
   state.loop_count += 1
 
+  # Collect all tiles from all edges
+  all_tiles = []
+  PATH_EDGES.each do |edge|
+    all_tiles.concat(edge[:tiles].compact)
+  end
+
   # Calculate hold gain: base 10 + modifiers from each tile
   hold_gain = 10  # Base hold gain per loop
-  state.loop_slots.each do |tile|
-    next unless tile  # Skip empty slots
+  all_tiles.each do |tile|
     effect = TILE_EFFECTS[tile[:type]]
     next unless effect  # Skip unknown tile types
     hold_gain += effect[:hold_per_loop]
@@ -72,8 +76,6 @@ def on_loop_complete(args)
   maybe_trigger_wave(args)
 
   # Refill player hand with new tiles
-  # TODO: Move to tile_system.rb when implemented
-  # Currently stubbed in main.rb
   refill_hand(args)
 end
 

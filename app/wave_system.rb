@@ -2,7 +2,7 @@
 #
 # Core Concepts:
 # - 15% chance each loop completion triggers a wave
-# - Wave destroys one random tile from the loop
+# - Wave destroys one random tile from any edge in the graph
 # - Simple visual feedback flag for rendering (wave_active)
 #
 # Integration:
@@ -17,7 +17,7 @@ WAVE_CHANCE = 15  # 15% chance
 # Algorithm:
 #   1. Roll random 0-100
 #   2. If roll < WAVE_CHANCE (15%):
-#      - Find all slots with tiles
+#      - Find all occupied slots across all edges
 #      - Pick random one
 #      - Set that slot to nil (destroy tile)
 #      - Set wave_active flag for visual feedback (30 frames)
@@ -27,18 +27,22 @@ def maybe_trigger_wave(args)
   # Roll for wave chance (0-99, so < 15 means 15% chance)
   return if rand(100) >= WAVE_CHANCE
 
-  # Find all occupied slots (slots that contain a tile)
-  occupied = []
-  args.state.loop_slots.each_with_index do |tile, i|
-    occupied << i if tile  # Add index if slot has a tile
+  # Find all occupied slots across all edges
+  occupied_slots = []
+  PATH_EDGES.each do |edge|
+    edge[:tiles].each_with_index do |tile, slot_index|
+      if tile
+        occupied_slots << { edge: edge, slot_index: slot_index }
+      end
+    end
   end
 
   # If no tiles exist, nothing to destroy
-  return if occupied.empty?
+  return if occupied_slots.empty?
 
   # Destroy a random tile by setting its slot to nil
-  target = occupied.sample
-  args.state.loop_slots[target] = nil
+  target = occupied_slots.sample
+  target[:edge][:tiles][target[:slot_index]] = nil
 
   # Set visual feedback flag (30 frames = ~0.5 seconds at 60fps)
   # Renderer can use this to show wave effect

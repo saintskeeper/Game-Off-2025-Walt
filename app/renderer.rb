@@ -10,23 +10,16 @@
 #
 # Integration:
 # - Called from main.rb at the end of each tick
-# - Uses constants from loop_system.rb, tile_system.rb, input_handler.rb
+# - Uses graph_system.rb, navigation_system.rb, tile_system.rb
 # - Reads state from args.state to determine what to render
 
 # Require systems for constants and helper functions
-require 'app/loop_system.rb'
+require 'app/graph_system.rb'
+require 'app/navigation_system.rb'
 require 'app/tile_system.rb'
 require 'app/input_handler.rb'
-
-# Color definitions for each tile type
-# Used when rendering tiles in slots and hand
-# RGB values (0-255) for visual distinction between tile types
-TILE_COLORS = {
-  trade_wind: { r: 100, g: 200, b: 255 },  # light blue
-  storm:      { r: 100, g: 100, b: 150 },  # purple-gray
-  calm_water: { r: 150, g: 220, b: 180 },  # soft green
-  wreckage:   { r: 139, g: 90,  b: 43  }   # brown
-}
+require 'app/hud/hud_system.rb'
+# Note: TILE_COLORS is now defined in tile_system.rb for shared access
 
 # Main render function - orchestrates all drawing operations
 # Called each tick from main.rb, even when game is over
@@ -35,8 +28,9 @@ TILE_COLORS = {
 #   args - DragonRuby args object containing state and outputs
 def render(args)
   render_background(args)
-  render_loop_path(args)
-  render_slots(args)
+  render_graph_edges(args)
+  render_graph_nodes(args)
+  render_available_choices(args)
   render_ship(args)
   render_meters(args)
   render_hand(args)
@@ -45,91 +39,193 @@ def render(args)
   render_victory(args) if args.state.victory
 end
 
-# Renders the game background (solid color fill)
-# Simple dark background to provide contrast for game elements
+# Renders the game background using the world map sprite
+# Changed from static_sprites to regular sprites to ensure proper z-index ordering
+# static_sprites render in a separate pass and can appear on top regardless of z-index
+# Sets z: 0 to ensure it renders behind all game objects
 # Args:
 #   args - DragonRuby args object
 def render_background(args)
-  # Full screen dark background (1280x720 default DragonRuby resolution)
-  args.outputs.solids << {
+  args.outputs.sprites << {
     x: 0,
     y: 0,
-    w: 1280,
-    h: 720,
-    r: 20,
-    g: 20,
-    b: 30
+    w: args.grid.w,
+    h: args.grid.h,
+    path: 'sprites/hud/world-map/world-map_export.png',
+    z: 0
   }
 end
 
-# Renders the circular loop path that the ship travels along
-# Draws dots around the circle to visualize the path
-# Uses the same center and radius constants as the ship movement
+# Renders all graph edges as lines with slot markers
+# Draws connections between nodes and visualizes tile slots along edges
 # Args:
 #   args - DragonRuby args object
-def render_loop_path(args)
-  # Draw 36 dots evenly spaced around the circle to show the path
-  36.times do |i|
-    # Calculate angle for this dot (evenly distributed around full circle)
-    angle = (i / 36.0) * TWO_PI
+def render_graph_edges(args)
+  PATH_EDGES.each do |edge|
+    from_node = PATH_NODES[edge[:from]]
+    to_node = PATH_NODES[edge[:to]]
 
-    # Convert polar coordinates to cartesian (same formula as ship_position)
-    x = LOOP_CENTER_X + LOOP_RADIUS * Math.cos(angle)
-    y = LOOP_CENTER_Y + LOOP_RADIUS * Math.sin(angle)
-
-    # Draw small dot (4x4 pixels) at this position
-    args.outputs.solids << {
-      x: x - 2,
-      y: y - 2,
-      w: 4,
-      h: 4,
-      r: 80,
-      g: 80,
-      b: 80
-    }
-  end
-end
-
-# Renders all 12 slots around the loop circle
-# Shows empty slots as outlines, occupied slots as filled colored rectangles
-# Args:
-#   args - DragonRuby args object
-def render_slots(args)
-  SLOT_COUNT.times do |i|
-    # Get collision rectangle for this slot (used for positioning)
-    rect = slot_rect(i)
-    tile = args.state.loop_slots[i]
-
-    if tile
-      # Slot has a tile - draw filled rectangle with tile's color
-      color = TILE_COLORS[tile[:type]]
-      args.outputs.solids << rect.merge(color)
+    # Draw edge path
+    # z: 1 ensures edges render above background (z: 0) but below nodes and ship
+    if edge[:path] && edge[:path].length > 1
+      # Draw pathfound route as connected line segments
+      edge[:path].each_cons(2) do |point_a, point_b|
+        args.outputs.lines << {
+          x: point_a[:x],
+          y: point_a[:y],
+          x2: point_b[:x],
+          y2: point_b[:y],
+          r: 100,
+          g: 120,
+          b: 140,
+          z: 1
+        }
+      end
     else
-      # Slot is empty - draw outline only
-      args.outputs.borders << rect.merge(r: 100, g: 100, b: 100)
+      # Fallback to straight line
+      args.outputs.lines << {
+        x: from_node[:position][:x],
+        y: from_node[:position][:y],
+        x2: to_node[:position][:x],
+        y2: to_node[:position][:y],
+        r: 100,
+        g: 120,
+        b: 140,
+        z: 1
+      }
+    end
+
+    # Draw slots along this edge
+    edge[:slots].times do |i|
+      pos = edge_slot_position(edge[:id], i)
+      tile = edge[:tiles][i]
+
+      if tile
+        # Slot has a tile - draw the tile icon sprite
+        # z: 5 ensures tile icons render above map background but below ship
+        icon_path = TILE_ICON_SPRITES[tile[:type]]
+        if icon_path
+          args.outputs.sprites << {
+            x: pos[:x] - 20,
+            y: pos[:y] - 20,
+            w: 40,
+            h: 40,
+            path: icon_path,
+            z: 5
+          }
+        else
+          # Fallback to colored rectangle
+          # z: 5 ensures tile icons render above map background but below ship
+          color = TILE_COLORS[tile[:type]]
+          args.outputs.solids << {
+            x: pos[:x] - 20,
+            y: pos[:y] - 20,
+            w: 40,
+            h: 40,
+            z: 5
+          }.merge(color)
+        end
+      else
+        # Slot is empty - draw outline only
+        # z: 5 ensures empty slot borders render above map background but below ship
+        args.outputs.borders << {
+          x: pos[:x] - 20,
+          y: pos[:y] - 20,
+          w: 40,
+          h: 40,
+          r: 80,
+          g: 80,
+          b: 80,
+          z: 5
+        }
+      end
     end
   end
 end
 
-# Renders the ship at its current position on the loop
-# Simple triangle/square representation of the ship
-# Position calculated from ship_angle using ship_position helper
+# Renders waypoint nodes as circles with labels
+# Shows connection points between edges
+# Args:
+#   args - DragonRuby args object
+def render_graph_nodes(args)
+  PATH_NODES.each do |node_id, node|
+    # Draw node circle
+    # z: 2 ensures nodes render above edges (z: 1) but below ship (z: 100)
+    args.outputs.solids << {
+      x: node[:position][:x] - 8,
+      y: node[:position][:y] - 8,
+      w: 16,
+      h: 16,
+      r: 150,
+      g: 150,
+      b: 200,
+      z: 2
+    }
+
+    # Draw node label if present
+    # z: 2 ensures labels render with their corresponding nodes
+    if node[:metadata][:name]
+      args.outputs.labels << {
+        x: node[:position][:x],
+        y: node[:position][:y] - 20,
+        text: node[:metadata][:name],
+        size_px: 14,
+        alignment_enum: 1,  # center
+        z: 2
+      }
+    end
+  end
+end
+
+# Highlights clickable nodes at branch points
+# Shows pulsing indicator for available path choices
+# Args:
+#   args - DragonRuby args object
+def render_available_choices(args)
+  next_edges = get_next_edge_choices(args.state)
+  return if next_edges.empty?
+
+  next_edges.each do |edge|
+    to_node = PATH_NODES[edge[:to]]
+
+    # Pulsing highlight effect
+    # z: 3 ensures choice highlights render above nodes (z: 2) but below ship (z: 100)
+    pulse = (Math.sin(args.state.tick_count * 0.1) * 30 + 70).to_i
+    args.outputs.borders << {
+      x: to_node[:position][:x] - 12,
+      y: to_node[:position][:y] - 12,
+      w: 24,
+      h: 24,
+      r: 100,
+      g: 255,
+      b: 100,
+      a: pulse,
+      z: 3
+    }
+  end
+end
+
+# Renders the ship at its current position on the graph
+# Uses sprite image for visual representation
+# Position calculated from ship state using ship_screen_position helper
+# Sets z: 10 to ensure it renders above the map background
 # Args:
 #   args - DragonRuby args object
 def render_ship(args)
-  # Get ship position from current angle
-  pos = ship_position(args.state.ship_angle)
+  # Get ship position from current edge and progress
+  pos = ship_screen_position(args.state)
 
-  # Draw simple square ship (30x30 pixels, white)
-  # TODO: Could be enhanced with triangle or sprite later
-  args.outputs.solids << {
-    x: pos[:x] - 15,
-    y: pos[:y] - 15,
-    w: 30,
-    h: 30,
-    r: 255,
-    g: 255,
-    b: 255
+  # Draw ship sprite (64x64 pixels, centered on position)
+  # Sprite path: sprites/hud/ships/base-ship.png
+  # z: 100 ensures ship renders above map background and all map elements
+  # Using high z value to ensure it appears above static_sprites background
+  args.outputs.sprites << {
+    x: pos[:x] - 32,
+    y: pos[:y] - 32,
+    w: 64,
+    h: 64,
+    path: 'sprites/hud/ships/base-ship.png',
+    z: 100
   }
 end
 
@@ -141,6 +237,7 @@ end
 def render_meters(args)
   # Hold meter (red, top-left)
   # Background bar (gray, full width)
+  # z: 150 ensures meters render above ship (z: 100) but below HUD hand (z: 200)
   args.outputs.solids << {
     x: 50,
     y: 650,
@@ -148,7 +245,8 @@ def render_meters(args)
     h: 30,
     r: 50,
     g: 50,
-    b: 50
+    b: 50,
+    z: 150
   }
 
   # Filled portion based on hold value (0-100)
@@ -160,7 +258,8 @@ def render_meters(args)
     h: 30,
     r: 200,
     g: 50,
-    b: 50
+    b: 50,
+    z: 151
   }
 
   # Label showing current hold value
@@ -169,7 +268,8 @@ def render_meters(args)
     y: 695,
     text: "HOLD: #{args.state.hold.to_i}",
     anchor_x: 0.5,
-    anchor_y: 0.5
+    anchor_y: 0.5,
+    z: 152
   }
 
   # Wind meter (blue, top-right)
@@ -181,7 +281,8 @@ def render_meters(args)
     h: 30,
     r: 50,
     g: 50,
-    b: 50
+    b: 50,
+    z: 150
   }
 
   # Filled portion based on wind value (0-100)
@@ -193,7 +294,8 @@ def render_meters(args)
     h: 30,
     r: 50,
     g: 100,
-    b: 200
+    b: 200,
+    z: 151
   }
 
   # Label showing current wind value
@@ -202,50 +304,14 @@ def render_meters(args)
     y: 695,
     text: "WIND: #{args.state.wind.to_i}",
     anchor_x: 0.5,
-    anchor_y: 0.5
+    anchor_y: 0.5,
+    z: 152
   }
 end
 
-# Renders the player's hand (3 tiles at bottom of screen)
-# Shows each tile with its color and name
-# Highlights the selected tile with a yellow border
-# Args:
-#   args - DragonRuby args object
-def render_hand(args)
-  args.state.hand.each_with_index do |tile, i|
-    # Get collision rectangle for this hand tile
-    rect = hand_tile_rect(i)
-
-    # Draw filled tile with its type's color
-    color = TILE_COLORS[tile[:type]]
-    args.outputs.solids << rect.merge(color)
-
-    # Highlight selected tile with yellow border (thicker, offset)
-    if args.state.selected_tile == i
-      args.outputs.borders << {
-        x: rect[:x] - 2,
-        y: rect[:y] - 2,
-        w: rect[:w] + 4,
-        h: rect[:h] + 4,
-        r: 255,
-        g: 255,
-        b: 0
-      }
-    end
-
-    # Tile name label (below tile, showing first word of type)
-    # Converts :trade_wind to "TRADE" for display
-    tile_name = tile[:type].to_s.split('_').first.upcase
-    args.outputs.labels << {
-      x: rect[:x] + rect[:w] / 2,
-      y: rect[:y] - 5,
-      text: tile_name,
-      size_px: 14,
-      anchor_x: 0.5,
-      anchor_y: 1.0
-    }
-  end
-end
+# Hand rendering is now handled by hud_system.rb
+# The render_hand function has been moved to hud_system.rb for better organization
+# It is called directly from there when renderer.rb calls render_hand(args)
 
 # Renders wave effect visual feedback when a wave destroys a tile
 # Shows a screen flash or overlay when wave_active flag is set
@@ -257,6 +323,7 @@ def render_wave_effect(args)
 
   # Draw semi-transparent overlay to indicate wave event
   # Alpha value decreases as wave_active approaches 0
+  # z: 250 ensures wave effect renders above HUD (z: 200) but below game over/victory (z: 300)
   alpha = (args.state.wave_active / 30.0 * 100).to_i
   args.outputs.solids << {
     x: 0,
@@ -266,7 +333,8 @@ def render_wave_effect(args)
     r: 100,
     g: 150,
     b: 255,
-    a: alpha
+    a: alpha,
+    z: 250
   }
 
   # Decrement wave_active counter (30 frames = ~0.5 seconds at 60fps)
@@ -279,6 +347,7 @@ end
 #   args - DragonRuby args object
 def render_game_over(args)
   # Semi-transparent dark overlay
+  # z: 300 ensures game over overlay renders above everything else
   args.outputs.solids << {
     x: 0,
     y: 0,
@@ -287,10 +356,12 @@ def render_game_over(args)
     r: 0,
     g: 0,
     b: 0,
-    a: 180
+    a: 180,
+    z: 300
   }
 
   # Game over message
+  # z: 301 ensures message renders above overlay
   args.outputs.labels << {
     x: 640,
     y: 400,
@@ -300,7 +371,8 @@ def render_game_over(args)
     anchor_y: 0.5,
     r: 200,
     g: 50,
-    b: 50
+    b: 50,
+    z: 301
   }
 
   # Restart instruction
@@ -313,7 +385,8 @@ def render_game_over(args)
     anchor_y: 0.5,
     r: 200,
     g: 200,
-    b: 200
+    b: 200,
+    z: 301
   }
 end
 
@@ -323,6 +396,7 @@ end
 #   args - DragonRuby args object
 def render_victory(args)
   # Semi-transparent light overlay
+  # z: 300 ensures victory overlay renders above everything else
   args.outputs.solids << {
     x: 0,
     y: 0,
@@ -331,10 +405,12 @@ def render_victory(args)
     r: 0,
     g: 0,
     b: 0,
-    a: 180
+    a: 180,
+    z: 300
   }
 
   # Victory message
+  # z: 301 ensures message renders above overlay
   args.outputs.labels << {
     x: 640,
     y: 400,
@@ -344,7 +420,8 @@ def render_victory(args)
     anchor_y: 0.5,
     r: 50,
     g: 200,
-    b: 255
+    b: 255,
+    z: 301
   }
 
   # Restart instruction
@@ -357,7 +434,8 @@ def render_victory(args)
     anchor_y: 0.5,
     r: 200,
     g: 200,
-    b: 200
+    b: 200,
+    z: 301
   }
 end
 

@@ -4,18 +4,18 @@
 # - DragonRuby: args.inputs.mouse.click is truthy on click frame
 # - args.inputs.mouse.point gives {x, y} of cursor
 # - Collision: args.geometry.inside_rect?(point, rect)
-# - Two-phase click: select from hand, then place on slot
+# - Three-phase click: select from hand, choose path at branch, or place/move on slot
 #
 # Integration:
-# - Called from main.rb before update_ship each tick
-# - Uses tile_system.rb for place_tile and slot_rect functions
-# - Uses loop_system.rb for SLOT_COUNT constant
+# - Called from main.rb each tick
+# - Uses graph_system.rb for node/edge queries
+# - Uses navigation_system.rb for ship movement
+# - Uses tile_system.rb for tile placement
 
-# Require tile_system for place_tile and slot_rect functions
+# Require systems for navigation and tile placement
+require 'app/graph_system.rb'
+require 'app/navigation_system.rb'
 require 'app/tile_system.rb'
-
-# Require loop_system for SLOT_COUNT constant
-require 'app/loop_system.rb'
 
 # Constants for hand tile positioning on screen
 # Hand tiles are displayed at the bottom of the screen
@@ -25,11 +25,10 @@ HAND_TILE_SIZE = 80  # Size of each tile in hand (width and height)
 HAND_SPACING = 100   # Spacing between tiles in hand
 
 # Main input handling function - processes mouse clicks each tick
-# Handles two-phase interaction: select tile from hand, then place on slot
-# Algorithm:
-#   1. Check if clicked on hand tile -> select it
-#   2. Check if clicked on empty slot (with tile selected) -> place tile
-#   3. Clicked elsewhere -> deselect tile
+# Handles multi-phase interaction:
+#   1. Select tile from hand
+#   2. Choose path at branch points
+#   3. Place tile on slot or advance ship
 # Args:
 #   args - DragonRuby args object containing inputs and state
 def handle_input(args)
@@ -40,29 +39,54 @@ def handle_input(args)
   mouse = args.inputs.mouse.point
 
   # Phase 1: Check if clicked on a tile in hand
-  # If clicked on hand tile, select it and return (don't check slots)
   args.state.hand.each_with_index do |tile, i|
     rect = hand_tile_rect(i)
     if args.geometry.inside_rect?(mouse, rect)
       args.state.selected_tile = i
-      return  # Exit early - tile selected, don't check slots
+      return  # Exit early - tile selected
     end
   end
 
-  # Phase 2: Check if clicked on a loop slot (only if tile is selected)
-  # If clicked on empty slot with tile selected, place the tile
-  if args.state.selected_tile
-    SLOT_COUNT.times do |i|
-      rect = slot_rect(i)
-      if args.geometry.inside_rect?(mouse, rect)
-        place_tile(args, i)
-        return  # Exit early - tile placed
+  # Phase 2: Check for branch point node clicks (path selection)
+  # If ship is at a branch point, allow clicking destination nodes
+  next_edges = get_next_edge_choices(args.state)
+  unless next_edges.empty?
+    next_edges.each do |edge|
+      to_node = PATH_NODES[edge[:to]]
+      node_rect = {
+        x: to_node[:position][:x] - 20,
+        y: to_node[:position][:y] - 20,
+        w: 40,
+        h: 40
+      }
+
+      if args.geometry.inside_rect?(mouse, node_rect)
+        advance_ship(args, edge[:id])
+        return  # Exit early - path chosen
       end
     end
   end
 
-  # Phase 3: Clicked elsewhere (not on hand, not on slot)
-  # Deselect any selected tile
+  # Phase 3: Check if clicked on a slot on current edge
+  # Either place tile (if selected) or advance ship (if next slot)
+  current_edge = get_current_edge(args.state)
+  current_edge[:slots].times do |i|
+    rect = edge_slot_rect(current_edge[:id], i)
+
+    next unless args.geometry.inside_rect?(mouse, rect)
+
+    if args.state.selected_tile
+      # Placing a tile
+      place_tile_on_edge(args, current_edge[:id], i)
+      return  # Exit early - tile placed
+    elsif i == args.state.ship[:edge_progress] + 1
+      # Moving ship forward one slot
+      advance_ship(args)
+      return  # Exit early - ship advanced
+    end
+  end
+
+  # Phase 4: Clicked elsewhere - deselect
   args.state.selected_tile = nil
 end
 
