@@ -52,7 +52,7 @@ def handle_input(args)
   next_edges = get_next_edge_choices(args.state)
   unless next_edges.empty?
     next_edges.each do |edge|
-      to_node = PATH_NODES[edge[:to]]
+      to_node = args.state.path_nodes[edge[:to]]
       node_rect = {
         x: to_node[:position][:x] - 20,
         y: to_node[:position][:y] - 20,
@@ -71,7 +71,7 @@ def handle_input(args)
   # Either place tile (if selected) or advance ship (if next slot)
   current_edge = get_current_edge(args.state)
   current_edge[:slots].times do |i|
-    rect = edge_slot_rect(current_edge[:id], i)
+    rect = edge_slot_rect(args.state, current_edge[:id], i)
 
     next unless args.geometry.inside_rect?(mouse, rect)
 

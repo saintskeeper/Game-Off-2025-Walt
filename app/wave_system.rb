@@ -29,7 +29,7 @@ def maybe_trigger_wave(args)
 
   # Find all occupied slots across all edges
   occupied_slots = []
-  PATH_EDGES.each do |edge|
+  args.state.path_edges.each do |edge|
     edge[:tiles].each_with_index do |tile, slot_index|
       if tile
         occupied_slots << { edge: edge, slot_index: slot_index }
@@ -43,6 +43,9 @@ def maybe_trigger_wave(args)
   # Destroy a random tile by setting its slot to nil
   target = occupied_slots.sample
   target[:edge][:tiles][target[:slot_index]] = nil
+
+  # Invalidate map render target to force rebuild without destroyed tile
+  args.state.map_render_target_built = false
 
   # Set visual feedback flag (30 frames = ~0.5 seconds at 60fps)
   # Renderer can use this to show wave effect

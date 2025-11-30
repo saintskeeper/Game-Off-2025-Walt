@@ -22,6 +22,10 @@ def tick(args)
 
 	# Restart logic: Press R to restart after game over or victory
 	if (args.state.game_over || args.state.victory) && args.inputs.keyboard.key_down.r
-		args.state = {}  # Clear all state to restart
+		# Clear static rendering collections before state reset
+		args.outputs.static_sprites.clear
+		args.outputs.static_lines.clear
+		# Clear all state to restart
+		args.state = {}
 	end
 end

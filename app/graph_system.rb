@@ -22,32 +22,27 @@ if $dynamic_graph_cache && !$dynamic_graph_initialized
   $dynamic_graph_initialized = true
 end
 
-# Export nodes and edges for compatibility with existing code
-# Only assign constants once to prevent flickering on file reloads
-# Use a global flag to track if constants have been initialized
-$path_nodes_initialized ||= false
-unless $path_nodes_initialized
-  PATH_NODES = $dynamic_graph_cache[:nodes]
-  PATH_EDGES = $dynamic_graph_cache[:edges]
-  $path_nodes_initialized = true
-end
+# Note: Graph data is now stored in args.state.path_nodes and args.state.path_edges
+# Access them directly instead of using constants to prevent hot-reload issues
 
 # Lookup edge by ID
 # Args:
+#   state - Game state object containing graph data
 #   edge_id - Symbol identifying the edge
 # Returns:
 #   Hash representing the edge, or nil if not found
-def get_edge(edge_id)
-  PATH_EDGES.find { |edge| edge[:id] == edge_id }
+def get_edge(state, edge_id)
+  state.path_edges.find { |edge| edge[:id] == edge_id }
 end
 
 # Find all edges leaving a specific node
 # Args:
+#   state - Game state object containing graph data
 #   node_id - Symbol identifying the node
 # Returns:
 #   Array of edge hashes where edge[:from] == node_id
-def get_outgoing_edges(node_id)
-  PATH_EDGES.select { |edge| edge[:from] == node_id }
+def get_outgoing_edges(state, node_id)
+  state.path_edges.select { |edge| edge[:from] == node_id }
 end
 
 # Get the edge the ship is currently on
@@ -56,7 +51,7 @@ end
 # Returns:
 #   Hash representing the current edge
 def get_current_edge(state)
-  get_edge(state.ship[:current_edge])
+  get_edge(state, state.ship[:current_edge])
 end
 
 # Get available edge choices at branch points
@@ -74,20 +69,21 @@ def get_next_edge_choices(state)
   return [] unless state.ship[:edge_progress] >= current_edge[:slots] - 1
 
   # Get all edges leaving the destination node of current edge
-  outgoing = get_outgoing_edges(current_edge[:to])
+  outgoing = get_outgoing_edges(state, current_edge[:to])
 
   # Return choices only if there are multiple options
   outgoing.length > 1 ? outgoing : []
 end
 
 # Build default graph structure
-# Initializes PATH_EDGES tile arrays
+# Initializes path_edges tile arrays
 # Returns:
 #   Hash containing graph metadata
-def build_default_graph
+def build_default_graph(state)
   {
-    nodes: PATH_NODES,
-    edges: PATH_EDGES,
-    start_node: :start
+    nodes: state.path_nodes,
+    edges: state.path_edges,
+    start_node: state.start_node || :caribbean_port,
+    end_node: state.end_node || :european_port
   }
 end

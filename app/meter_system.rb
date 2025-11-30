@@ -40,6 +40,7 @@ def on_enter_slot(args, tile)
 end
 
 # Called when ship completes a full loop (returns to start)
+# NOTE: This is kept for backwards compatibility but not used in linear journey mode
 # Calculates hold gain based on base value + tile modifiers
 # Also triggers wave system and hand refill
 # Args:
@@ -50,7 +51,7 @@ def on_loop_complete(args)
 
   # Collect all tiles from all edges
   all_tiles = []
-  PATH_EDGES.each do |edge|
+  state.path_edges.each do |edge|
     all_tiles.concat(edge[:tiles].compact)
   end
 
@@ -79,12 +80,26 @@ def on_loop_complete(args)
   refill_hand(args)
 end
 
-# Checks if victory condition is met (wind meter reached 100)
-# Sets victory flag to true if condition is satisfied
+# Called when ship reaches the European port (end of journey)
+# This triggers victory condition - player successfully delivered rum to Europe
+# Args:
+#   args - DragonRuby args object containing state
+def on_journey_complete(args)
+  # Victory condition: reached the European port
+  # Wind and hold mechanics still work during journey, but victory is reaching destination
+  check_victory(args)
+end
+
+# Checks if victory condition is met
+# In linear journey mode: victory is reaching the European port (set by on_journey_complete)
+# Wind meter can still be used for gameplay but doesn't trigger victory
 # Args:
 #   args - DragonRuby args object containing state
 def check_victory(args)
-  args.state.victory = true if args.state.wind >= 100
+  # Victory is triggered by reaching the end node (European port)
+  # This is set by on_journey_complete() in navigation_system.rb
+  # We just need to ensure the flag is set
+  args.state.victory = true
 end
 
 # Checks if game over condition is met (hold meter reached 100)

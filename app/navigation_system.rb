@@ -8,6 +8,7 @@
 # - Branch points: player chooses which edge to take
 
 require 'app/graph_system.rb'
+require 'app/meter_system.rb'
 
 # Advances ship forward one slot along current edge
 # If target_edge_id provided, transitions to that edge (for branch choices)
@@ -54,7 +55,7 @@ end
 
 # Called after advancing ship to handle edge transitions
 # If reached end of edge:
-#   - If destination is start node: trigger on_loop_complete()
+#   - If destination is end node: trigger on_journey_complete() (victory)
 #   - If only one outgoing edge: auto-advance to it
 #   - If multiple outgoing edges: wait for player choice
 # Args:
@@ -69,19 +70,16 @@ def check_edge_complete(args)
   # Get destination node
   dest_node_id = current_edge[:to]
 
-  # Check if we've returned to start (loop complete)
-  if dest_node_id == :start
-    on_loop_complete(args)
-
-    # Reset to beginning
-    state.ship[:current_edge] = :start_to_fork
-    state.ship[:edge_progress] = 0
-    state.ship[:path_history] = [:start]
+  # Check if we've reached the European port (end node - victory condition)
+  # The end node is stored in state during initialization
+  end_node = state.end_node || :european_port
+  if dest_node_id == end_node
+    on_journey_complete(args)
     return
   end
 
   # Get outgoing edges from destination node
-  outgoing_edges = get_outgoing_edges(dest_node_id)
+  outgoing_edges = get_outgoing_edges(state, dest_node_id)
 
   if outgoing_edges.length == 1
     # Only one option - auto-advance
@@ -101,8 +99,14 @@ def check_edge_complete(args)
     # Ship stays at end of current edge
     # get_next_edge_choices will return the available options
   else
-    # No outgoing edges - shouldn't happen in a valid graph
-    puts "WARNING: Reached node #{dest_node_id} with no outgoing edges"
+    # No outgoing edges - reached the end of the journey
+    # This should trigger victory if we're at the end node
+    end_node = state.end_node || :european_port
+    if dest_node_id == end_node
+      on_journey_complete(args)
+    else
+      puts "WARNING: Reached node #{dest_node_id} with no outgoing edges"
+    end
   end
 end
 
@@ -123,8 +127,8 @@ def ship_screen_position(state)
   end
 
   # Fallback to linear interpolation
-  from_node = PATH_NODES[current_edge[:from]]
-  to_node = PATH_NODES[current_edge[:to]]
+  from_node = state.path_nodes[current_edge[:from]]
+  to_node = state.path_nodes[current_edge[:to]]
 
   # Calculate interpolation factor (0.0 to 1.0)
   progress = state.ship[:edge_progress].to_f / current_edge[:slots]

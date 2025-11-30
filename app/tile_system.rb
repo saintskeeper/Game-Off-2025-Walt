@@ -68,7 +68,7 @@ def place_tile_on_edge(args, edge_id, local_slot_index)
   state = args.state
   return unless state.selected_tile  # No tile selected, can't place
 
-  edge = get_edge(edge_id)
+  edge = get_edge(state, edge_id)
   return unless edge  # Invalid edge
 
   # Verify slot is empty (nil = empty slot)
@@ -85,17 +85,21 @@ def place_tile_on_edge(args, edge_id, local_slot_index)
 
   # Clear selection after placement
   state.selected_tile = nil
+
+  # Invalidate map render target to force rebuild with new tile
+  args.state.map_render_target_built = false
 end
 
 # Calculates the screen position (x, y) of a slot along an edge
 # Interpolates between the edge's from_node and to_node positions
 # Args:
+#   state - Game state object containing graph data
 #   edge_id - Symbol identifying the edge
 #   local_slot_index - Index within the edge (0 to edge.slots-1)
 # Returns:
 #   Hash with :x and :y keys for the slot's center position
-def edge_slot_position(edge_id, local_slot_index)
-  edge = get_edge(edge_id)
+def edge_slot_position(state, edge_id, local_slot_index)
+  edge = get_edge(state, edge_id)
   return { x: 0, y: 0 } unless edge
 
   # If edge has a pathfound route, use it
@@ -105,8 +109,8 @@ def edge_slot_position(edge_id, local_slot_index)
   end
 
   # Fallback to linear interpolation
-  from_node = PATH_NODES[edge[:from]]
-  to_node = PATH_NODES[edge[:to]]
+  from_node = state.path_nodes[edge[:from]]
+  to_node = state.path_nodes[edge[:to]]
 
   # Calculate interpolation factor (0.0 to 1.0)
   progress = local_slot_index.to_f / edge[:slots]
@@ -121,12 +125,13 @@ end
 # Calculates the collision rectangle for a slot (used for click detection)
 # Returns a rect hash suitable for args.geometry.inside_rect? checks
 # Args:
+#   state - Game state object containing graph data
 #   edge_id - Symbol identifying the edge
 #   local_slot_index - Index within the edge
 # Returns:
 #   Hash with :x, :y, :w, :h keys for collision detection
-def edge_slot_rect(edge_id, local_slot_index)
-  pos = edge_slot_position(edge_id, local_slot_index)
+def edge_slot_rect(state, edge_id, local_slot_index)
+  pos = edge_slot_position(state, edge_id, local_slot_index)
   # 40x40 pixel rectangle centered on slot position
   { x: pos[:x] - 20, y: pos[:y] - 20, w: 40, h: 40 }
 end
