@@ -7,15 +7,26 @@ require 'app/meter_system.rb'
 require 'app/tile_system.rb'
 require 'app/wave_system.rb'
 require 'app/input_handler.rb'
+require 'app/auto_travel_system.rb'
+require 'app/encounter_system/encounter_system.rb'
 require 'app/renderer.rb'
 require 'data/navigation_grid.rb'
 
 def tick(args)
 	init_state(args)
+	init_auto_travel(args)
 
 	unless args.state.game_over || args.state.victory
-		handle_input(args)
-		# Ship movement is now event-driven via clicks (no update_ship needed)
+		# Handle encounter input first (can dismiss encounters)
+		encounter_handled = handle_encounter_input(args)
+
+		# Update auto-travel (moves ship automatically, triggers encounters)
+		update_auto_travel(args)
+
+		# Handle other input (tile placement, etc.) - only if no encounter active and wasn't just dismissed
+		unless encounter_active?(args) || encounter_handled
+			handle_input(args)
+		end
 	end
 
 	render(args)

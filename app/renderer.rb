@@ -48,6 +48,7 @@ require 'app/input_handler.rb'
 require 'app/hud/hud_system.rb'
 require 'app/hud/edge_system.rb'
 require 'app/helpers/rendering_helpers.rb'
+require 'app/encounter_system/encounter_system.rb'
 
 # Main render function - orchestrates all drawing operations
 # Called each tick from main.rb, even when game is over
@@ -69,6 +70,7 @@ def render(args)
   render_meters(args)
   render_hand(args)
   render_wave_effect(args)
+  render_encounter_popup(args)  # Render encounter popup overlay
   render_game_over(args) if args.state.game_over
   render_victory(args) if args.state.victory
 end
@@ -209,58 +211,71 @@ def render_available_choices(args)
 end
 
 # Renders the ship sprite
-# Ship sprite is 128x128 (doubled from original 64x64)
+# Ship sprite is 64x64 at normal size
 # Centered on tile slot squares (tile slots are 40x40, centered on pos)
 # Ship position comes from ship_screen_position which returns the center of the current tile slot
 # Ship is centered both horizontally and vertically on the tile slot position
 def render_ship(args)
   pos = ship_screen_position(args.state)
+
+  # Flip ship sprite horizontally if on return journey
+  flip = args.state.ship[:journey_phase] == :return
+
   args.outputs.primitives << args.state.ship_sprite_base.merge({
-    x: pos[:x] - 64,  # Center horizontally: ship width is 128, so offset by half (64)
-    y: pos[:y] - 64  # Center vertically: ship height is 128, so offset by half (64)
+    x: pos[:x] - 32,  # Center horizontally: ship width is 64, so offset by half (32)
+    y: pos[:y] - 32,  # Center vertically: ship height is 64, so offset by half (32)
+    flip_horizontally: flip
   })
 end
 
-# Renders Hold and Wind meters
+# Renders Hold and Cargo meters
 def render_meters(args)
-  # Hold meter background
+  # Hull Integrity meter - rendered using ship-health sprite
+  # Sprite is displayed at native size (256x128) on left side, aligned with cargo meter at top
   args.outputs.primitives << args.state.hold_meter_bg
 
-  # Hold meter fill
-  hold_width = (args.state.hold / 100.0) * 200
+  # Hull Integrity label - centered in the sprite
+  # Calculate position relative to sprite - place text centered both horizontally and vertically
+  sprite_x = args.state.hold_meter_bg[:x]
+  sprite_y = args.state.hold_meter_bg[:y]
+  sprite_w = args.state.hold_meter_bg[:w]
+  sprite_h = args.state.hold_meter_bg[:h]
+  # Position label at the center of the sprite
+  # In DragonRuby, y is bottom-left, so sprite center = sprite_y + (sprite_h / 2)
+  sprite_center_x = sprite_x + (sprite_w / 2)
+  sprite_center_y = sprite_y + (sprite_h / 2)
+
   args.outputs.primitives << {
-    x: 50, y: 650, w: hold_width, h: 30,
-    r: 200, g: 50, b: 50,
-    path: :solid,
-    z: ZIndex::METERS_FILL
+    x: sprite_center_x,  # Center of sprite horizontally
+    y: sprite_center_y,  # Center of sprite vertically
+    text: "Hull Integrity: #{args.state.hold.to_i}",
+    anchor_x: 0.5, anchor_y: 0.5,  # Center anchor so text is perfectly centered
+    r: 255, g: 255, b: 255,  # White text color
+    z: ZIndex::METERS_LABEL  # Use same z-index as Wind label for consistency
   }
 
-  # Hold label
-  args.outputs.primitives << {
-    x: 150, y: 695,
-    text: "HOLD: #{args.state.hold.to_i}",
-    anchor_x: 0.5, anchor_y: 0.5,
-    z: ZIndex::METERS_LABEL
-  }
-
-  # Wind meter background
+  # Cargo meter background - rendered using cargo-hud sprite
+  # Sprite is displayed at native size (256x128) on right side, aligned with hull integrity meter at top
   args.outputs.primitives << args.state.wind_meter_bg
 
-  # Wind meter fill
-  wind_width = (args.state.wind / 100.0) * 200
-  args.outputs.primitives << {
-    x: 1030, y: 650, w: wind_width, h: 30,
-    r: 50, g: 100, b: 200,
-    path: :solid,
-    z: ZIndex::METERS_FILL
-  }
+  # Cargo label - centered in the sprite
+  # Calculate position relative to sprite - place text centered both horizontally and vertically
+  cargo_sprite_x = args.state.wind_meter_bg[:x]
+  cargo_sprite_y = args.state.wind_meter_bg[:y]
+  cargo_sprite_w = args.state.wind_meter_bg[:w]
+  cargo_sprite_h = args.state.wind_meter_bg[:h]
+  # Position label at the center of the sprite
+  # In DragonRuby, y is bottom-left, so sprite center = sprite_y + (sprite_h / 2)
+  cargo_sprite_center_x = cargo_sprite_x + (cargo_sprite_w / 2)
+  cargo_sprite_center_y = cargo_sprite_y + (cargo_sprite_h / 2)
 
-  # Wind label
   args.outputs.primitives << {
-    x: 1130, y: 695,
-    text: "WIND: #{args.state.wind.to_i}",
-    anchor_x: 0.5, anchor_y: 0.5,
-    z: ZIndex::METERS_LABEL
+    x: cargo_sprite_center_x,  # Center of sprite horizontally
+    y: cargo_sprite_center_y,  # Center of sprite vertically
+    text: "CARGO: #{args.state.wind.to_i}",
+    anchor_x: 0.5, anchor_y: 0.5,  # Center anchor so text is perfectly centered
+    r: 255, g: 255, b: 255,  # White text color
+    z: ZIndex::METERS_LABEL  # Use same z-index as other meter labels for consistency
   }
 end
 

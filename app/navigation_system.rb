@@ -101,13 +101,28 @@ def check_edge_complete(args)
   # The end node is stored in state during initialization
   end_node = state.end_node || :european_port
   if dest_node_id == end_node
-    # Mark journey as complete but don't auto-advance
-    # Let the normal edge completion logic handle showing return path options
+    # Mark journey as complete and automatically start return journey
     state.journey_count ||= 0
     state.journey_count += 1
     state.ship[:journey_phase] = :return  # Mark as return journey phase
-    puts "[JOURNEY] Reached European port (journey #{state.journey_count}), waiting for player to click return path"
-    # Continue to normal edge completion logic to show return path options
+    puts "[JOURNEY] Reached European port (journey #{state.journey_count}), automatically starting return journey"
+
+    # Find return edge and start moving
+    outgoing_edges = get_outgoing_edges(state, dest_node_id)
+    if outgoing_edges.length > 0
+      new_edge = outgoing_edges.first
+      state.ship[:current_edge] = new_edge[:id]
+      state.ship[:edge_progress] = 0
+      state.ship[:path_history] << dest_node_id unless state.ship[:path_history].include?(dest_node_id)
+
+      # Check if we entered a slot with a tile
+      tile = new_edge[:tiles][0]
+      on_enter_slot(args, tile) if tile
+
+      return
+    else
+      puts "[WARNING] Reached European port but found no return path!"
+    end
   end
 
   # Check if we've reached the Caribbean port on return journey

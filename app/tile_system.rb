@@ -78,7 +78,23 @@ def place_tile_on_edge(args, edge_id, local_slot_index)
   return unless state.selected_tile >= 0 && state.selected_tile < state.hand.length
 
   # Place the tile in the slot
-  edge[:tiles][local_slot_index] = state.hand[state.selected_tile]
+  tile_to_place = state.hand[state.selected_tile]
+  edge[:tiles][local_slot_index] = tile_to_place
+
+  # Mirror tile to reverse edge if it exists
+  # Construct reverse edge ID (e.g. :A_to_B -> :B_to_A)
+  reverse_edge_id = "#{edge[:to]}_to_#{edge[:from]}".to_sym
+  reverse_edge = get_edge(state, reverse_edge_id)
+
+  if reverse_edge
+    # Calculate mirrored index: slots - 1 - index
+    reverse_index = edge[:slots] - 1 - local_slot_index
+    # Check if slot is valid and empty
+    if reverse_index >= 0 && reverse_index < reverse_edge[:slots] && !reverse_edge[:tiles][reverse_index]
+      reverse_edge[:tiles][reverse_index] = tile_to_place
+      puts "[TILE] Mirrored tile to reverse edge #{reverse_edge_id} at index #{reverse_index}"
+    end
+  end
 
   # Remove tile from hand
   state.hand.delete_at(state.selected_tile)

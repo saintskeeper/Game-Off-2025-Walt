@@ -22,6 +22,8 @@ TILE_EFFECTS = {
 
 # Called when ship enters a slot with a tile
 # Triggers wind gain based on tile type
+# NOTE: This is called from navigation_system when ship moves, but encounters
+# should be handled separately by the encounter system, not here
 # Args:
 #   args - DragonRuby args object containing state
 #   tile - Tile hash (or nil if empty slot)
@@ -35,8 +37,9 @@ def on_enter_slot(args, tile)
   # Add wind gain from passing over this tile
   args.state.wind = (args.state.wind + effect[:wind_on_pass]).clamp(0, 100)
 
-  # Check if victory condition met (wind reached 100)
-  check_victory(args)
+  # Don't check victory here - victory is only triggered by reaching the end node
+  # Wind meter is for gameplay effects, not victory condition
+  # check_victory(args)  # Removed - causes instant victory on tile encounter
 end
 
 # Called when ship completes a full loop (returns to start)
