@@ -56,7 +56,8 @@ end
 
 # Get available edge choices at branch points
 # Returns empty array if ship is in middle of edge
-# Returns array of edges if ship is at end of edge with multiple choices
+# Returns array of edges if ship is at end of edge with choices available
+# More robust: always shows available edges when at a node (allows return journeys from any node)
 # Args:
 #   state - Game state object containing ship data
 # Returns:
@@ -65,14 +66,37 @@ def get_next_edge_choices(state)
   current_edge = get_current_edge(state)
   return [] unless current_edge
 
-  # Only show choices if at end of current edge
-  return [] unless state.ship[:edge_progress] >= current_edge[:slots] - 1
+  # Only show choices if at end of current edge (at or past the last slot)
+  # When edge_progress >= slots, we've reached the destination node
+  # Use >= slots (not slots - 1) to match check_edge_complete logic
+  at_end = state.ship[:edge_progress] >= current_edge[:slots]
+
+  # Also allow showing choices when at the last slot (slots - 1) for better UX
+  at_last_slot = state.ship[:edge_progress] >= current_edge[:slots] - 1
+
+  return [] unless at_last_slot
 
   # Get all edges leaving the destination node of current edge
   outgoing = get_outgoing_edges(state, current_edge[:to])
 
-  # Return choices only if there are multiple options
-  outgoing.length > 1 ? outgoing : []
+  # More robust: always show choices when there are outgoing edges
+  # This allows return journeys from any node, not just European port
+  # Previously only showed if multiple options OR at European port
+  if outgoing.length > 0
+    # Debug output for return journeys
+    end_node = state.end_node || :european_port
+    is_at_european_port = current_edge[:to] == end_node
+    if is_at_european_port || state.ship[:journey_phase] == :return
+      puts "[DEBUG] get_next_edge_choices at #{current_edge[:to]}:"
+      puts "  - Current edge: #{current_edge[:id]}"
+      puts "  - Progress: #{state.ship[:edge_progress]}/#{current_edge[:slots]}"
+      puts "  - Found #{outgoing.length} outgoing edge(s): #{outgoing.map { |e| "#{e[:id]} -> #{e[:to]}" }.join(', ')}"
+    end
+    return outgoing
+  end
+
+  # No outgoing edges available
+  []
 end
 
 # Build default graph structure

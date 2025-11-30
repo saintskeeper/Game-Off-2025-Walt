@@ -15,30 +15,25 @@ end
 
 # Define key waypoint locations (these will be validated/adjusted to accessible positions)
 # These are the important story/gameplay locations
+# Journey: Caribbean (left) -> Mid-Atlantic -> European Port (right)
 KEY_WAYPOINTS = {
-  start: {
-    id: :start,
-    desired_position: { x: 200, y: 360 },  # Will be adjusted to nearest accessible cell
+  caribbean_port: {
+    id: :caribbean_port,
+    desired_position: { x: 200, y: 360 },  # Left side - Caribbean starting point
     type: :port,
-    metadata: { name: "Home Port" }
+    metadata: { name: "Caribbean Port" }
   },
-  treasure_isle: {
-    id: :treasure_isle,
-    desired_position: { x: 800, y: 360 },
+  mid_atlantic: {
+    id: :mid_atlantic,
+    desired_position: { x: 640, y: 360 },  # Middle - Mid-Atlantic crossing
+    type: :island,
+    metadata: { name: "Mid-Atlantic" }
+  },
+  european_port: {
+    id: :european_port,
+    desired_position: { x: 1080, y: 360 },  # Right side - European destination
     type: :port,
-    metadata: { name: "Treasure Isle" }
-  },
-  north_island: {
-    id: :north_island,
-    desired_position: { x: 500, y: 500 },
-    type: :island,
-    metadata: { name: "North Island" }
-  },
-  south_island: {
-    id: :south_island,
-    desired_position: { x: 500, y: 220 },
-    type: :island,
-    metadata: { name: "South Island" }
+    metadata: { name: "European Port" }
   }
 }
 
@@ -48,7 +43,7 @@ KEY_WAYPOINTS = {
 #   max_search_radius - Maximum distance to search (in grid cells)
 # Returns:
 #   Hash with :x and :y screen coordinates of nearest accessible cell, or nil
-def find_nearest_accessible_position(desired_x, desired_y, max_search_radius = 10)
+def find_nearest_accessible_position(desired_x, desired_y, max_search_radius = 20)
   grid_pos = screen_to_grid(desired_x, desired_y)
 
   # If the desired position is already accessible, use it
@@ -94,8 +89,9 @@ def initialize_waypoint_nodes
         type: waypoint_def[:type],
         metadata: waypoint_def[:metadata]
       }
+      puts "[GRAPH] Created node #{id} at (#{accessible_pos[:x]}, #{accessible_pos[:y]})"
     else
-      puts "WARNING: Could not find accessible position for waypoint #{id}"
+      puts "WARNING: Could not find accessible position for waypoint #{id} at desired position (#{desired[:x]}, #{desired[:y]})"
     end
   end
 
@@ -103,6 +99,8 @@ def initialize_waypoint_nodes
 end
 
 # Generate edges between nodes using pathfinding
+# Creates bidirectional edges: for each A->B connection, also creates B->A with reversed path
+# This ensures return journeys use the exact same squares as forward journeys
 # Args:
 #   nodes - Hash of node data
 #   connections - Array of [from_id, to_id] pairs defining which nodes to connect
@@ -110,6 +108,8 @@ end
 #   Array of edge hashes with paths and tile slots
 def generate_edges(nodes, connections)
   edges = []
+  # Track which edge pairs we've already created to avoid duplicates
+  created_pairs = {}
 
   connections.each do |from_id, to_id|
     from_node = nodes[from_id]
@@ -117,7 +117,11 @@ def generate_edges(nodes, connections)
 
     next unless from_node && to_node
 
-    # Find path between nodes
+    # Skip if we've already created this edge pair (bidirectional)
+    pair_key = [from_id, to_id].sort
+    next if created_pairs[pair_key]
+
+    # Find path between nodes (only once per pair)
     path = find_path(
       from_node[:position][:x], from_node[:position][:y],
       to_node[:position][:x], to_node[:position][:y]
@@ -128,7 +132,8 @@ def generate_edges(nodes, connections)
       # Each path segment becomes a slot
       slots = [path.length - 1, 3].max  # Minimum 3 slots
 
-      edge = {
+      # Create forward edge (A->B)
+      forward_edge = {
         id: "#{from_id}_to_#{to_id}".to_sym,
         from: from_id,
         to: to_id,
@@ -136,8 +141,25 @@ def generate_edges(nodes, connections)
         tiles: Array.new(slots),
         path: path  # Store the full path for rendering
       }
+      edges << forward_edge
 
-      edges << edge
+      # Create reverse edge (B->A) using the reversed path
+      # This ensures return journeys use the exact same squares
+      reverse_path = path.reverse
+      reverse_edge = {
+        id: "#{to_id}_to_#{from_id}".to_sym,
+        from: to_id,
+        to: from_id,
+        slots: slots,  # Same number of slots (same path length)
+        tiles: Array.new(slots),
+        path: reverse_path  # Reversed path - same squares, opposite direction
+      }
+      edges << reverse_edge
+
+      # Mark this pair as created
+      created_pairs[pair_key] = true
+
+      puts "[GRAPH] Created bidirectional edge pair: #{from_id} <-> #{to_id} (#{slots} slots each)"
     else
       puts "WARNING: Could not find path from #{from_id} to #{to_id}"
     end
@@ -154,12 +176,13 @@ def build_dynamic_graph
   nodes = initialize_waypoint_nodes
 
   # Define connections (gameplay route)
-  # This creates a loop: start -> north -> treasure -> south -> start
+  # Only define forward connections - generate_edges will automatically create bidirectional edges
+  # Outbound journey: Caribbean -> Mid-Atlantic -> European Port
+  # Return journey is automatically created as reverse edges using the same paths
   connections = [
-    [:start, :north_island],
-    [:north_island, :treasure_isle],
-    [:treasure_isle, :south_island],
-    [:south_island, :start]
+    # Outbound path (reverse edges created automatically)
+    [:caribbean_port, :mid_atlantic],
+    [:mid_atlantic, :european_port]
   ]
 
   # Generate edges with pathfinding
@@ -168,7 +191,8 @@ def build_dynamic_graph
   {
     nodes: nodes,
     edges: edges,
-    start_node: :start
+    start_node: :caribbean_port,
+    end_node: :european_port  # Victory condition: reach this node
   }
 end
 

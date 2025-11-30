@@ -1,8 +1,7 @@
-* EXCEPTION:
-* EXCEPTION: ~Runtime#add_to_require_queue~ failed for =app/graph_system.rb=.
-* ERROR:
-Undefined method defined? for main.
-
-
+* EXCEPTION: 'get_edge': wrong number of arguments (1 for 2)
 ** Backtrace:
-*** app/graph_system.rb:27
+*** app/graph_system.rb:34:in get_edge
+*** app/navigation_system.rb:31:in advance_ship
+*** app/input_handler.rb:101:in handle_input
+*** app/input_handler.rb:91:in handle_input
+*** app/main.rb:17:in tick

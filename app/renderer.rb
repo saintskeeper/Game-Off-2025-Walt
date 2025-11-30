@@ -46,6 +46,7 @@ require 'app/navigation_system.rb'
 require 'app/tile_system.rb'
 require 'app/input_handler.rb'
 require 'app/hud/hud_system.rb'
+require 'app/hud/edge_system.rb'
 require 'app/helpers/rendering_helpers.rb'
 
 # Main render function - orchestrates all drawing operations
@@ -129,61 +130,57 @@ def render_graph_edges(args)
   end
 
   # Draw tile slots along edge (rendered dynamically each frame)
-  args.state.path_edges.each do |edge|
-    edge[:slots].times do |i|
-      pos = edge_slot_position(args.state, edge[:id], i)
-      tile = edge[:tiles][i]
-
-      if tile
-        icon_path = TILE_ICON_SPRITES[tile[:type]]
-        if icon_path
-          args.outputs.primitives << {
-            x: pos[:x] - 20, y: pos[:y] - 20,
-            w: 40, h: 40,
-            path: icon_path,
-            z: ZIndex::TILE_SLOTS
-          }
-        else
-          color = TILE_COLORS[tile[:type]]
-          args.outputs.primitives << {
-            x: pos[:x] - 20, y: pos[:y] - 20,
-            w: 40, h: 40,
-            path: :solid,
-            z: ZIndex::TILE_SLOTS
-          }.merge(color)
-        end
-      else
-        args.outputs.primitives << {
-          x: pos[:x] - 20, y: pos[:y] - 20,
-          w: 40, h: 40,
-          r: 80, g: 80, b: 80,
-          z: ZIndex::TILE_SLOTS,
-          primitive_marker: :border
-        }
-      end
-    end
-  end
+  # This renders the squares the player moves through
+  render_edge_tile_slots(args, ZIndex::TILE_SLOTS)
 end
 
 # Renders graph nodes as squares with labels
+# Ports are rendered larger and with different colors to make them more visible
 def render_graph_nodes(args)
   args.state.path_nodes.each do |node_id, node|
+    # Determine node color and size based on type
+    is_port = node[:type] == :port
+    node_size = is_port ? 20 : 16  # Ports are larger
+    node_color = if is_port
+      # Ports: brighter blue for visibility
+      { r: 100, g: 150, b: 255 }
+    else
+      # Other nodes: standard blue-grey
+      { r: 150, g: 150, b: 200 }
+    end
+
+    # Render node square
     args.outputs.primitives << {
-      x: node[:position][:x] - 8,
-      y: node[:position][:y] - 8,
-      w: 16, h: 16,
-      r: 150, g: 150, b: 200,
+      x: node[:position][:x] - (node_size / 2),
+      y: node[:position][:y] - (node_size / 2),
+      w: node_size, h: node_size,
+      r: node_color[:r], g: node_color[:g], b: node_color[:b],
       path: :solid,
       z: ZIndex::NODES
     }
 
+    # Render port border for extra visibility
+    if is_port
+      args.outputs.primitives << {
+        x: node[:position][:x] - (node_size / 2),
+        y: node[:position][:y] - (node_size / 2),
+        w: node_size, h: node_size,
+        r: 255, g: 255, b: 255,
+        path: :solid,
+        z: ZIndex::NODES,
+        primitive_marker: :border
+      }
+    end
+
+    # Render node label
     if node[:metadata][:name]
       args.outputs.primitives << {
         x: node[:position][:x],
-        y: node[:position][:y] - 20,
+        y: node[:position][:y] - (node_size / 2) - 10,
         text: node[:metadata][:name],
-        size_px: 14,
+        size_px: is_port ? 16 : 14,  # Ports have larger text
         alignment_enum: 1,
+        r: 255, g: 255, b: 255,  # White text for better visibility
         z: ZIndex::NODES
       }
     end
@@ -212,11 +209,15 @@ def render_available_choices(args)
 end
 
 # Renders the ship sprite
+# Ship sprite is 128x128 (doubled from original 64x64)
+# Centered on tile slot squares (tile slots are 40x40, centered on pos)
+# Ship position comes from ship_screen_position which returns the center of the current tile slot
+# Ship is centered both horizontally and vertically on the tile slot position
 def render_ship(args)
   pos = ship_screen_position(args.state)
   args.outputs.primitives << args.state.ship_sprite_base.merge({
-    x: pos[:x] - 32,
-    y: pos[:y] - 32
+    x: pos[:x] - 64,  # Center horizontally: ship width is 128, so offset by half (64)
+    y: pos[:y] - 64  # Center vertically: ship height is 128, so offset by half (64)
   })
 end
 

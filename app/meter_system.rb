@@ -81,13 +81,53 @@ def on_loop_complete(args)
 end
 
 # Called when ship reaches the European port (end of journey)
-# This triggers victory condition - player successfully delivered rum to Europe
+# Automatically starts return journey back to Caribbean port
 # Args:
 #   args - DragonRuby args object containing state
 def on_journey_complete(args)
-  # Victory condition: reached the European port
-  # Wind and hold mechanics still work during journey, but victory is reaching destination
-  check_victory(args)
+  state = args.state
+
+  # Increment journey count to track how many times we've completed the route
+  state.journey_count ||= 0
+  state.journey_count += 1
+
+  # We're at the European port, so find the return edge back to Mid-Atlantic
+  # The graph now has return paths: European Port -> Mid-Atlantic -> Caribbean Port
+  end_node_id = state.end_node || :european_port
+
+  # Find the first edge from the European port (return journey)
+  return_edge = state.path_edges.find { |e| e[:from] == end_node_id }
+
+  if return_edge
+    # Start return journey from European port
+    state.ship[:current_edge] = return_edge[:id]
+    state.ship[:edge_progress] = 0
+    state.ship[:journey_phase] = :return  # Mark as return journey
+    state.ship[:path_history] << end_node_id unless state.ship[:path_history].include?(end_node_id)
+
+    # Check if we entered a slot with a tile at the start
+    tile = return_edge[:tiles][0]
+    on_enter_slot(args, tile) if tile
+
+    puts "[JOURNEY] Completed journey #{state.journey_count}, starting return to Caribbean"
+  else
+    # Fallback: if no return path exists, reset to Caribbean port
+    start_node_id = state.start_node || :caribbean_port
+    first_edge = state.path_edges.find { |e| e[:from] == start_node_id }
+
+    if first_edge
+      state.ship[:current_edge] = first_edge[:id]
+      state.ship[:edge_progress] = 0
+      state.ship[:journey_phase] = :outbound
+      state.ship[:path_history] = [start_node_id]
+      puts "[JOURNEY] No return path found, resetting to Caribbean port"
+    else
+      puts "WARNING: Could not find return edge from European port or reset edge from Caribbean port"
+    end
+  end
+
+  # Note: We don't set victory to true here - the game continues
+  # This allows players to make multiple journeys back and forth
 end
 
 # Checks if victory condition is met

@@ -48,13 +48,15 @@ def init_state(args)
 	args.state.game_over ||= false # false until game over
 	args.state.victory ||= false # false until victory
 	args.state.loop_count ||= 0 # tracks how many loops finished
+	args.state.journey_count ||= 0 # tracks how many journeys completed (Caribbean to Europe)
 	args.state.selected_tile ||= nil # which tile in hand is selected
 
 	# Pre-cache sprite definitions for performance
 	# These are created once and reused every frame
+	# Ship sprite size doubled from 64x64 to 128x128 for better visibility on map
 	args.state.ship_sprite_base ||= {
-		w: 64,
-		h: 64,
+		w: 128,
+		h: 128,
 		path: 'sprites/hud/ships/base-ship.png',
 		z: 100  # ZIndex::SHIP
 	}
