@@ -152,10 +152,34 @@ def handle_input(args)
     end
   end
 
-  # Phase 3: Check if clicked on a slot on current edge
+  # Phase 3: Check if clicked on a grid square on an island or port
+  # Only allow placing tiles (not movement) on island/port grid squares
+  if args.state.selected_tile
+    args.state.path_nodes.each do |node_id, node|
+      next unless node[:grid_squares] && node[:grid_squares].length > 0
+
+      # Initialize tiles array for this node if it doesn't exist
+      args.state.node_tiles ||= {}
+      args.state.node_tiles[node_id] ||= Array.new(node[:grid_squares].length, nil)
+
+      node[:grid_squares].each_with_index do |grid_square, i|
+        rect = node_grid_square_rect(args.state, node_id, i)
+
+        next unless args.geometry.inside_rect?(mouse, rect)
+
+        # Place tile on this grid square
+        place_tile_on_node(args, node_id, i)
+        return  # Exit early - tile placed
+      end
+    end
+  end
+
+  # Phase 4: Check if clicked on a slot on current edge
   # Either place tile (if selected) or advance ship to next slot
   # For movement: identify visible slots we can move to and allow clicking them
   current_edge = get_current_edge(args.state)
+  return unless current_edge  # Safety check: can't interact with slots if no edge
+
   current_progress = args.state.ship[:edge_progress]
 
   # Find which visible slots are reachable (ahead of current position)
@@ -179,7 +203,7 @@ def handle_input(args)
     end
   end
 
-  # Phase 4: Clicked elsewhere - deselect
+  # Phase 5: Clicked elsewhere - deselect
   args.state.selected_tile = nil
 end
 

@@ -30,6 +30,7 @@ module ZIndex
   HAND_BG = 120
   HAND_ICON = 121
   HAND_SELECTION = 122
+  CANNON = 123
 
   # Effects and overlays
   WAVE_EFFECT = 200
@@ -39,6 +40,9 @@ end
 
 # Background sprite path constant
 WORLD_MAP_SPRITE = 'sprites/hud/world-map/world-map_export.png'
+
+# Render version - increment to force static re-render on hot reload
+RENDER_VERSION = 4
 
 # Require systems for constants and helper functions
 require 'app/graph_system.rb'
@@ -63,12 +67,16 @@ def render(args)
   # Render graph elements
   render_graph_edges(args)
   render_graph_nodes(args)
+  # Node grid squares disabled - islands are waypoints, not tile placement areas
+  # render_node_grid_squares(args)
 
   # Render dynamic elements
   render_available_choices(args)
   render_ship(args)
   render_meters(args)
   render_hand(args)
+  render_cargo_hold(args)  # Render cargo hold (4 slots for found items)
+  render_cannon(args)
   render_wave_effect(args)
   render_encounter_popup(args)  # Render encounter popup overlay
   render_game_over(args) if args.state.game_over
@@ -78,8 +86,14 @@ end
 # Renders the world map background using static_sprites
 # static_sprites persist until explicitly cleared - no flicker
 def render_background(args)
-  # Only add to static_sprites once
-  unless args.state.background_rendered
+  # Check if we need to re-render (first time or version changed)
+  needs_render = !args.state.background_rendered || args.state.render_version != RENDER_VERSION
+
+  if needs_render
+    # Clear any old static rendering first (helps with hot reload)
+    args.outputs.static_sprites.clear
+    args.outputs.static_lines.clear
+
     args.outputs.static_sprites << {
       x: 0,
       y: 0,
@@ -88,47 +102,30 @@ def render_background(args)
       path: WORLD_MAP_SPRITE
     }
     args.state.background_rendered = true
-    puts "[RENDER] Background added to static_sprites"
+    args.state.render_version = RENDER_VERSION
+    args.state.edges_rendered = false  # Force re-render of edges
+    puts "[RENDER] Background added to static_sprites (version #{RENDER_VERSION})"
   end
 end
 
 # Renders graph edges as lines with tile slots
-# Lines are rendered once to static_lines for performance
-# Tile slots are rendered dynamically each frame as they can change
+# Only renders the CURRENT edge path (not all edges)
 # Lines are red and dotted like a treasure map
 def render_graph_edges(args)
-  # Render edge path lines once to static_lines (they don't change)
-  unless args.state.edges_rendered
-    args.state.path_edges.each do |edge|
-      from_node = args.state.path_nodes[edge[:from]]
-      to_node = args.state.path_nodes[edge[:to]]
+  # Get current edge - only render this path
+  current_edge = get_current_edge(args.state)
 
-      # Draw edge path lines as red dotted lines (treasure map style)
-      if edge[:path] && edge[:path].length > 1
-        edge[:path].each_cons(2) do |point_a, point_b|
-          # Create dotted line segments for this path segment
-          dotted_segments = create_dotted_line(
-            point_a[:x], point_a[:y],
-            point_b[:x], point_b[:y]
-          )
-          # Add all dot segments to static_lines
-          dotted_segments.each do |segment|
-            args.outputs.static_lines << segment
-          end
-        end
-      else
-        # Fallback: straight dotted line between nodes
-        dotted_segments = create_dotted_line(
-          from_node[:position][:x], from_node[:position][:y],
-          to_node[:position][:x], to_node[:position][:y]
-        )
-        dotted_segments.each do |segment|
-          args.outputs.static_lines << segment
-        end
+  # Render current edge path dynamically (changes when ship moves to new edge)
+  if current_edge && current_edge[:path] && current_edge[:path].length > 1
+    current_edge[:path].each_cons(2) do |point_a, point_b|
+      dotted_segments = create_dotted_line(
+        point_a[:x], point_a[:y],
+        point_b[:x], point_b[:y]
+      )
+      dotted_segments.each do |segment|
+        args.outputs.primitives << segment.merge(z: ZIndex::EDGES)
       end
     end
-    args.state.edges_rendered = true
-    puts "[RENDER] Red dotted edge lines added to static_lines (treasure map style)"
   end
 
   # Draw tile slots along edge (rendered dynamically each frame)
@@ -136,55 +133,104 @@ def render_graph_edges(args)
   render_edge_tile_slots(args, ZIndex::TILE_SLOTS)
 end
 
-# Renders graph nodes as squares with labels
-# Ports are rendered larger and with different colors to make them more visible
+# Renders graph nodes as visible markers
+# Only renders the START and END ports - not all nodes
 def render_graph_nodes(args)
-  args.state.path_nodes.each do |node_id, node|
-    # Determine node color and size based on type
-    is_port = node[:type] == :port
-    node_size = is_port ? 20 : 16  # Ports are larger
-    node_color = if is_port
-      # Ports: brighter blue for visibility
-      { r: 100, g: 150, b: 255 }
-    else
-      # Other nodes: standard blue-grey
-      { r: 150, g: 150, b: 200 }
-    end
+  # Only render start and end ports
+  start_node = args.state.path_nodes[args.state.start_node]
+  end_node = args.state.path_nodes[args.state.end_node]
 
-    # Render node square
+  [start_node, end_node].compact.each do |node|
+    next unless node[:type] == :port
+
+    # Ports: larger visible marker
+    node_size = 32
+    half_size = node_size / 2
+
+    # Background
     args.outputs.primitives << {
-      x: node[:position][:x] - (node_size / 2),
-      y: node[:position][:y] - (node_size / 2),
+      x: node[:position][:x] - half_size,
+      y: node[:position][:y] - half_size,
       w: node_size, h: node_size,
-      r: node_color[:r], g: node_color[:g], b: node_color[:b],
+      r: 60, g: 50, b: 40, a: 220,
       path: :solid,
       z: ZIndex::NODES
     }
 
-    # Render port border for extra visibility
-    if is_port
-      args.outputs.primitives << {
-        x: node[:position][:x] - (node_size / 2),
-        y: node[:position][:y] - (node_size / 2),
-        w: node_size, h: node_size,
-        r: 255, g: 255, b: 255,
-        path: :solid,
-        z: ZIndex::NODES,
-        primitive_marker: :border
-      }
-    end
+    # Border - warm brown
+    args.outputs.primitives << {
+      x: node[:position][:x] - half_size,
+      y: node[:position][:y] - half_size,
+      w: node_size, h: node_size,
+      r: 160, g: 130, b: 80, a: 255,
+      z: ZIndex::NODES + 1,
+      primitive_marker: :border
+    }
 
-    # Render node label
-    if node[:metadata][:name]
+    # Port label - larger and offset below node
+    if node[:metadata] && node[:metadata][:name]
       args.outputs.primitives << {
         x: node[:position][:x],
-        y: node[:position][:y] - (node_size / 2) - 10,
+        y: node[:position][:y] - half_size - 8,
         text: node[:metadata][:name],
-        size_px: is_port ? 16 : 14,  # Ports have larger text
-        alignment_enum: 1,
-        r: 255, g: 255, b: 255,  # White text for better visibility
-        z: ZIndex::NODES
+        size_px: 14,
+        anchor_x: 0.5,
+        anchor_y: 1.0,
+        r: 255, g: 240, b: 200,
+        z: ZIndex::NODES + 1
       }
+    end
+  end
+end
+
+# Renders grid squares on islands and ports where tiles can be placed
+# Similar to edge tile slots, but positioned on the navigation grid
+# Rendered dynamically each frame as tiles can be placed/removed
+# Args:
+#   args - DragonRuby args object containing state and outputs
+def render_node_grid_squares(args)
+  args.state.path_nodes.each do |node_id, node|
+    # Only render grid squares for nodes that have them (islands and ports)
+    next unless node[:grid_squares] && node[:grid_squares].length > 0
+
+    # Initialize tiles array for this node if it doesn't exist
+    # This stores which tiles are placed on which grid squares
+    args.state.node_tiles ||= {}
+    args.state.node_tiles[node_id] ||= Array.new(node[:grid_squares].length, nil)
+
+    node[:grid_squares].each_with_index do |grid_square, i|
+      pos = node_grid_square_position(args.state, node_id, i)
+      tile = args.state.node_tiles[node_id][i]
+
+      if tile
+        # Render tile icon or colored square if tile is placed
+        icon_path = TILE_ICON_SPRITES[tile[:type]]
+        if icon_path
+          args.outputs.primitives << {
+            x: pos[:x] - 20, y: pos[:y] - 20,
+            w: 40, h: 40,
+            path: icon_path,
+            z: ZIndex::TILE_SLOTS
+          }
+        else
+          color = TILE_COLORS[tile[:type]]
+          args.outputs.primitives << {
+            x: pos[:x] - 20, y: pos[:y] - 20,
+            w: 40, h: 40,
+            path: :solid,
+            z: ZIndex::TILE_SLOTS
+          }.merge(color)
+        end
+      else
+        # Render empty grid square as gray border (similar to edge slots)
+        args.outputs.primitives << {
+          x: pos[:x] - 20, y: pos[:y] - 20,
+          w: 40, h: 40,
+          r: 80, g: 80, b: 80,
+          z: ZIndex::TILE_SLOTS,
+          primitive_marker: :border
+        }
+      end
     end
   end
 end
@@ -194,14 +240,15 @@ def render_available_choices(args)
   next_edges = get_next_edge_choices(args.state)
   return if next_edges.empty?
 
-  pulse = (Math.sin(Kernel.tick_count * 0.1) * 30 + 70).to_i
+  pulse = (Math.sin(Kernel.tick_count * 0.15) * 40 + 100).to_i
 
   next_edges.each do |edge|
     to_node = args.state.path_nodes[edge[:to]]
+    # Larger highlight to match new 32x32 node size (36x36 for visibility)
     args.outputs.primitives << {
-      x: to_node[:position][:x] - 12,
-      y: to_node[:position][:y] - 12,
-      w: 24, h: 24,
+      x: to_node[:position][:x] - 18,
+      y: to_node[:position][:y] - 18,
+      w: 36, h: 36,
       r: 100, g: 255, b: 100,
       a: pulse,
       z: ZIndex::CHOICES,
@@ -277,6 +324,15 @@ def render_meters(args)
     r: 255, g: 255, b: 255,  # White text color
     z: ZIndex::METERS_LABEL  # Use same z-index as other meter labels for consistency
   }
+end
+
+# Renders the cannon sprite in the bottom right of the screen
+# Cannon is used for shooting enemies in island encounters
+# Positioned at bottom-right with padding from edges
+# Args:
+#   args - DragonRuby args object containing state and outputs
+def render_cannon(args)
+  args.outputs.primitives << args.state.cannon_sprite
 end
 
 # Renders wave effect overlay

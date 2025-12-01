@@ -106,6 +106,47 @@ def place_tile_on_edge(args, edge_id, local_slot_index)
   args.state.map_render_target_built = false
 end
 
+# Places a selected tile from hand into a grid square on an island or port
+# Validates that grid square is empty and tile is selected before placing
+# Removes tile from hand after successful placement
+# Args:
+#   args - DragonRuby args object containing state
+#   node_id - Symbol identifying the node (island or port)
+#   grid_square_index - Index within the node's grid_squares array
+def place_tile_on_node(args, node_id, grid_square_index)
+  state = args.state
+  return unless state.selected_tile  # No tile selected, can't place
+
+  node = state.path_nodes[node_id]
+  return unless node  # Invalid node
+  return unless node[:grid_squares] && node[:grid_squares].length > grid_square_index  # Invalid grid square index
+
+  # Initialize tiles array for this node if it doesn't exist
+  state.node_tiles ||= {}
+  state.node_tiles[node_id] ||= Array.new(node[:grid_squares].length, nil)
+
+  # Verify grid square is empty (nil = empty slot)
+  return if state.node_tiles[node_id][grid_square_index]  # Grid square already occupied
+
+  # Verify selected_tile index is valid
+  return unless state.selected_tile >= 0 && state.selected_tile < state.hand.length
+
+  # Place the tile in the grid square
+  tile_to_place = state.hand[state.selected_tile]
+  state.node_tiles[node_id][grid_square_index] = tile_to_place
+
+  # Remove tile from hand
+  state.hand.delete_at(state.selected_tile)
+
+  # Clear selection after placement
+  state.selected_tile = nil
+
+  puts "[TILE] Placed tile on #{node_id} grid square #{grid_square_index}"
+
+  # Invalidate map render target to force rebuild with new tile
+  args.state.map_render_target_built = false
+end
+
 # Calculates the screen position (x, y) of a slot along an edge
 # Interpolates between the edge's from_node and to_node positions
 # Args:
@@ -140,6 +181,7 @@ end
 
 # Calculates the collision rectangle for a slot (used for click detection)
 # Returns a rect hash suitable for args.geometry.inside_rect? checks
+# Uses slightly larger click area than visual for better usability
 # Args:
 #   state - Game state object containing graph data
 #   edge_id - Symbol identifying the edge
@@ -148,7 +190,57 @@ end
 #   Hash with :x, :y, :w, :h keys for collision detection
 def edge_slot_rect(state, edge_id, local_slot_index)
   pos = edge_slot_position(state, edge_id, local_slot_index)
-  # 40x40 pixel rectangle centered on slot position
+  # 44x44 pixel rectangle centered on slot position (slightly larger than 40px visual for usability)
+  { x: pos[:x] - 22, y: pos[:y] - 22, w: 44, h: 44 }
+end
+
+# Convert grid coordinates to screen coordinates for island/port grid squares
+# Grid squares from JSON are in image coordinates (Y=0 at top), but grid_to_screen
+# expects DragonRuby coordinates (Y=0 at bottom), so we need to flip Y
+# Args:
+#   grid_x, grid_y - Grid coordinates from JSON (image space: Y=0 at top)
+# Returns:
+#   Hash with :x and :y keys for screen coordinates (center of grid cell)
+def grid_square_to_screen(grid_x, grid_y)
+  require 'app/pathfinding_system.rb'
+  require 'data/navigation_grid.rb'
+
+  # Grid squares from JSON are in image coordinates (Y=0 at top)
+  # grid_to_screen expects DragonRuby coordinates (Y=0 at bottom)
+  # So we need to flip the Y coordinate
+  grid_height = NAVIGATION_GRID.length
+  grid_y_flipped = grid_height - 1 - grid_y
+
+  grid_to_screen(grid_x, grid_y_flipped)
+end
+
+# Calculates the screen position of a grid square on an island or port
+# Args:
+#   state - Game state object containing graph data
+#   node_id - Symbol identifying the node (island or port)
+#   grid_square_index - Index within the node's grid_squares array
+# Returns:
+#   Hash with :x and :y keys for the grid square's center position
+def node_grid_square_position(state, node_id, grid_square_index)
+  node = state.path_nodes[node_id]
+  return { x: 0, y: 0 } unless node
+  return { x: 0, y: 0 } unless node[:grid_squares] && node[:grid_squares].length > grid_square_index
+
+  grid_square = node[:grid_squares][grid_square_index]
+  grid_square_to_screen(grid_square[:x], grid_square[:y])
+end
+
+# Calculates the collision rectangle for a grid square (used for click detection)
+# Returns a rect hash suitable for args.geometry.inside_rect? checks
+# Args:
+#   state - Game state object containing graph data
+#   node_id - Symbol identifying the node
+#   grid_square_index - Index within the node's grid_squares array
+# Returns:
+#   Hash with :x, :y, :w, :h keys for collision detection
+def node_grid_square_rect(state, node_id, grid_square_index)
+  pos = node_grid_square_position(state, node_id, grid_square_index)
+  # 40x40 pixel rectangle centered on grid square position (same size as edge slots)
   { x: pos[:x] - 20, y: pos[:y] - 20, w: 40, h: 40 }
 end
 

@@ -1,10 +1,10 @@
 # Remove the pound sign and leading space for the properties below before publishing your game.
-# devid=myname
-# devtitle=My Name
-# gameid=mygame
-# gametitle=My Game
-# version=0.1
-# icon=metadata/icon.png
+devid=Walt-
+devtitle=Walt-
+gameid=maelstrom-loop
+gametitle=Maelstrom Loop
+version=0.1
+icon=sprites/hud/ships/base-ship.png
 
 # === Flags available at all licensing tiers ===
 
@@ -25,7 +25,7 @@
 # publishing process (ONLY TOP LEVEL DIRECTORIES ARE TESTED UNLESS ignore_directories_recursively=true).
 # For example, if your game supports saves, you'd want to ignore
 # that directory (example format: ignore_directories=tmp,saves,dev,assets).
-# ignore_directories=saves
+ignore_directories=saves,venv,tools
 
 # If you want the ignore_directories list to be applied to child directories, set ignore_directories_recursively=true.
 # IMPORTANT: Any directory that matches the ignore list will be ignored (REGARDLESS OF HIERARCHY).

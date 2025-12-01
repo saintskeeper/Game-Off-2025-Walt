@@ -63,6 +63,12 @@ def advance_ship(args, target_edge_id = nil)
   end
 
   # Normal advancement along current edge
+  # Safety check: if no current edge, can't advance
+  unless current_edge
+    puts "[WARNING] Cannot advance ship - no current edge available"
+    return
+  end
+
   state.ship[:edge_progress] += 1
 
   # Check if we entered a slot with a tile
@@ -105,6 +111,7 @@ def check_edge_complete(args)
     state.journey_count ||= 0
     state.journey_count += 1
     state.ship[:journey_phase] = :return  # Mark as return journey phase
+    state.visited_islands = []  # Reset visited islands for return journey encounters
     puts "[JOURNEY] Reached European port (journey #{state.journey_count}), automatically starting return journey"
 
     # Find return edge and start moving
@@ -132,6 +139,7 @@ def check_edge_complete(args)
     # Completed return journey, start new outbound journey
     state.ship[:journey_phase] = :outbound
     state.ship[:path_history] = [start_node]
+    state.visited_islands = []  # Reset visited islands for new journey
 
     # Find the first edge from Caribbean port (outbound)
     first_edge = get_outgoing_edges(state, start_node).find { |e| e[:to] != start_node }
@@ -204,6 +212,19 @@ end
 def ship_screen_position(state)
   current_edge = get_current_edge(state)
 
+  # Handle case where no current edge exists (graph not initialized or no edges available)
+  # Return position of start node as fallback
+  unless current_edge
+    start_node_id = state.start_node || :caribbean_port
+    start_node = state.path_nodes && state.path_nodes[start_node_id]
+    if start_node && start_node[:position]
+      return { x: start_node[:position][:x], y: start_node[:position][:y] }
+    else
+      # Ultimate fallback: center of screen
+      return { x: 640, y: 360 }
+    end
+  end
+
   # If edge has a pathfound route, use it
   if current_edge[:path] && current_edge[:path].length > 1
     require 'app/graph_system_dynamic.rb'
@@ -213,6 +234,17 @@ def ship_screen_position(state)
   # Fallback to linear interpolation
   from_node = state.path_nodes[current_edge[:from]]
   to_node = state.path_nodes[current_edge[:to]]
+
+  # Safety check: if nodes don't exist, return start node position
+  unless from_node && to_node
+    start_node_id = state.start_node || :caribbean_port
+    start_node = state.path_nodes && state.path_nodes[start_node_id]
+    if start_node && start_node[:position]
+      return { x: start_node[:position][:x], y: start_node[:position][:y] }
+    else
+      return { x: 640, y: 360 }
+    end
+  end
 
   # Calculate interpolation factor (0.0 to 1.0)
   progress = state.ship[:edge_progress].to_f / current_edge[:slots]

@@ -1,0 +1,154 @@
+[
+  {
+    "id": "island_0",
+    "position": {
+      "x": 540,
+      "y": 400
+    },
+    "type": "island",
+    "metadata": {
+      "name": "Island 1",
+      "cluster_size": 25,
+      "image_position": {
+        "x": 135,
+        "y": 80
+      }
+    },
+    "grid_squares": [
+      {
+        "x": 44,
+        "y": 26
+      },
+      {
+        "x": 44,
+        "y": 27
+      },
+      {
+        "x": 45,
+        "y": 26
+      },
+      {
+        "x": 45,
+        "y": 27
+      }
+    ]
+  },
+  {
+    "id": "island_1",
+    "position": {
+      "x": 504,
+      "y": 384
+    },
+    "type": "island",
+    "metadata": {
+      "name": "Island 2",
+      "cluster_size": 25,
+      "image_position": {
+        "x": 126,
+        "y": 84
+      }
+    },
+    "grid_squares": [
+      {
+        "x": 41,
+        "y": 27
+      },
+      {
+        "x": 41,
+        "y": 28
+      },
+      {
+        "x": 42,
+        "y": 27
+      },
+      {
+        "x": 42,
+        "y": 28
+      }
+    ]
+  },
+  {
+    "id": "island_2",
+    "position": {
+      "x": 464,
+      "y": 368
+    },
+    "type": "island",
+    "metadata": {
+      "name": "Island 3",
+      "cluster_size": 25,
+      "image_position": {
+        "x": 116,
+        "y": 88
+      }
+    },
+    "grid_squares": [
+      {
+        "x": 38,
+        "y": 28
+      },
+      {
+        "x": 38,
+        "y": 29
+      },
+      {
+        "x": 38,
+        "y": 30
+      },
+      {
+        "x": 39,
+        "y": 28
+      },
+      {
+        "x": 39,
+        "y": 29
+      },
+      {
+        "x": 39,
+        "y": 30
+      }
+    ]
+  },
+  {
+    "id": "island_3",
+    "position": {
+      "x": 424,
+      "y": 348
+    },
+    "type": "island",
+    "metadata": {
+      "name": "Island 4",
+      "cluster_size": 25,
+      "image_position": {
+        "x": 106,
+        "y": 93
+      }
+    },
+    "grid_squares": [
+      {
+        "x": 34,
+        "y": 30
+      },
+      {
+        "x": 34,
+        "y": 31
+      },
+      {
+        "x": 35,
+        "y": 30
+      },
+      {
+        "x": 35,
+        "y": 31
+      },
+      {
+        "x": 36,
+        "y": 30
+      },
+      {
+        "x": 36,
+        "y": 31
+      }
+    ]
+  }
+]

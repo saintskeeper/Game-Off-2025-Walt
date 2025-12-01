@@ -4,7 +4,7 @@
 # - Renders the squares/tiles that appear along edges where the player moves
 # - Each edge has multiple slots that can contain tiles
 # - Slots are positioned along the pathfound route or linearly interpolated
-# - Empty slots show as gray borders, filled slots show tile icons or colors
+# - Empty slots show as subtle markers, filled slots show tile icons
 #
 # Integration:
 # - Called from renderer.rb during graph edge rendering
@@ -14,57 +14,92 @@
 # Require tile system for slot positioning and tile constants
 require 'app/tile_system.rb'
 
+# Tile slot size - larger for better visibility
+TILE_SLOT_SIZE = 40  # Larger slots for readability
+
+# Slot styling colors - simple and readable
+SLOT_EMPTY_BG = { r: 50, g: 50, b: 50, a: 200 }       # Dark gray, visible
+SLOT_EMPTY_BORDER = { r: 200, g: 200, b: 200, a: 200 } # Light gray border
+SLOT_FILLED_BG = { r: 40, g: 40, b: 60, a: 220 }      # Slightly blue tint
+SLOT_FILLED_BORDER = { r: 255, g: 220, b: 100, a: 255 } # Bright gold
+
 # Renders tile slots along graph edges
 # These are the squares the player moves through during gameplay
 # Rendered dynamically each frame as tiles can be placed/removed
-# Skips every even-indexed square, but always renders first and last squares
+# ONLY renders slots on the current journey edge - not all possible edges
 # Args:
 #   args - DragonRuby args object containing state and outputs
 #   z_index - Z-index value for rendering layer (from ZIndex::TILE_SLOTS)
 def render_edge_tile_slots(args, z_index)
-  # Draw tile slots along edge (rendered dynamically each frame)
-  args.state.path_edges.each do |edge|
-    last_index = edge[:slots] - 1
+  half_size = TILE_SLOT_SIZE / 2
+  icon_size = 32  # Icon size within slot
 
+  # Only render slots on the current edge the ship is traveling on
+  current_edge = get_current_edge(args.state)
+  return unless current_edge
+
+  # Also get the reverse edge (for return journey) to show its slots too
+  edges_to_render = [current_edge]
+
+  edges_to_render.each do |edge|
     edge[:slots].times do |i|
-      # Skip even-indexed squares, but always render first (0) and last
-      # This means: render 0, skip 2/4/6..., render 1/3/5..., always render last
-      is_first = i == 0
-      is_last = i == last_index
-      is_even = i.even?
-
-      # Skip if even-indexed, unless it's the first or last square
-      next if is_even && !is_first && !is_last
-
-      pos = edge_slot_position(args.state, edge[:id], i)
       tile = edge[:tiles][i]
+      pos = edge_slot_position(args.state, edge[:id], i)
 
       if tile
+        # === FILLED SLOT ===
+        # Background
+        args.outputs.primitives << {
+          x: pos[:x] - half_size, y: pos[:y] - half_size,
+          w: TILE_SLOT_SIZE, h: TILE_SLOT_SIZE,
+          path: :solid,
+          z: z_index
+        }.merge(SLOT_FILLED_BG)
+
+        # Tile icon
         icon_path = TILE_ICON_SPRITES[tile[:type]]
         if icon_path
           args.outputs.primitives << {
-            x: pos[:x] - 20, y: pos[:y] - 20,
-            w: 40, h: 40,
+            x: pos[:x] - icon_size / 2, y: pos[:y] - icon_size / 2,
+            w: icon_size, h: icon_size,
             path: icon_path,
-            z: z_index
+            z: z_index + 1
           }
         else
+          # Fallback to colored square
           color = TILE_COLORS[tile[:type]]
           args.outputs.primitives << {
-            x: pos[:x] - 20, y: pos[:y] - 20,
-            w: 40, h: 40,
+            x: pos[:x] - icon_size / 2, y: pos[:y] - icon_size / 2,
+            w: icon_size, h: icon_size,
             path: :solid,
-            z: z_index
+            z: z_index + 1
           }.merge(color)
         end
-      else
+
+        # Bright gold border for filled slots
         args.outputs.primitives << {
-          x: pos[:x] - 20, y: pos[:y] - 20,
-          w: 40, h: 40,
-          r: 80, g: 80, b: 80,
-          z: z_index,
+          x: pos[:x] - half_size, y: pos[:y] - half_size,
+          w: TILE_SLOT_SIZE, h: TILE_SLOT_SIZE,
+          z: z_index + 2,
           primitive_marker: :border
-        }
+        }.merge(SLOT_FILLED_BORDER)
+      else
+        # === EMPTY SLOT ===
+        # Background
+        args.outputs.primitives << {
+          x: pos[:x] - half_size, y: pos[:y] - half_size,
+          w: TILE_SLOT_SIZE, h: TILE_SLOT_SIZE,
+          path: :solid,
+          z: z_index
+        }.merge(SLOT_EMPTY_BG)
+
+        # Muted gold border for empty slots
+        args.outputs.primitives << {
+          x: pos[:x] - half_size, y: pos[:y] - half_size,
+          w: TILE_SLOT_SIZE, h: TILE_SLOT_SIZE,
+          z: z_index + 2,
+          primitive_marker: :border
+        }.merge(SLOT_EMPTY_BORDER)
       end
     end
   end

@@ -5,16 +5,16 @@
 # different rendering contexts.
 
 # Creates dotted line segments from a start point to an end point
-# Treasure map style: red dots with gaps between them
+# Treasure map style: red dotted line
 # Args:
 #   x1, y1 - Start point coordinates
 #   x2, y2 - End point coordinates
-#   dot_length - Length of each dot segment (default: 8)
-#   gap_length - Length of gap between dots (default: 6)
+#   dot_length - Length of each dot segment (default: 6 for visible dots)
+#   gap_length - Length of gap between dots (default: 10 for classic dotted look)
 #   color - Hash with :r, :g, :b color values (default: red for treasure map)
 # Returns:
 #   Array of line hash primitives representing the dotted line
-def create_dotted_line(x1, y1, x2, y2, dot_length: 8, gap_length: 6, color: { r: 200, g: 0, b: 0 })
+def create_dotted_line(x1, y1, x2, y2, dot_length: 6, gap_length: 10, color: { r: 180, g: 60, b: 60 })
   # Calculate total distance and direction
   dx = x2 - x1
   dy = y2 - y1

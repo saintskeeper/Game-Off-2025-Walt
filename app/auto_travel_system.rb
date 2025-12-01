@@ -1,10 +1,11 @@
-# Auto-Travel System - Automatically moves ship left to right, stopping on each tile
+# Auto-Travel System - Automatically moves ship left to right, stopping at islands
 #
 # Core Concepts:
-# - Ship automatically advances one slot at a time
-# - Stops on each tile slot to trigger encounters
+# - Ship automatically advances along edges between nodes
+# - Stops at each ISLAND node to trigger island encounters (battles)
+# - Stops on tile slots to trigger tile encounters
 # - Waits for encounter to be dismissed before continuing
-# - Travels from left to right (Caribbean -> European Port)
+# - Travels from Caribbean -> European Port (outbound) then back (return)
 #
 # Integration:
 # - Called from main.rb each tick
@@ -18,6 +19,7 @@ require 'app/encounter_system/encounter_system.rb'
 # Auto-travel configuration
 AUTO_TRAVEL_ENABLED = true  # Set to false to disable auto-travel
 TRAVEL_DELAY_TICKS = 30     # Frames to wait between slot movements (for visual pacing)
+ISLAND_ENCOUNTER_ENABLED = true  # Stop at islands for encounters
 
 # Initialize auto-travel state
 # Args:
@@ -50,7 +52,24 @@ def update_auto_travel(args)
 
   # Check if we're at the end of the current edge
   if args.state.ship[:edge_progress] >= current_edge[:slots]
-    # At end of edge - check for next edge (auto-choose leftmost/forward edge)
+    # At end of edge - we've arrived at a node
+    dest_node_id = current_edge[:to]
+    dest_node = args.state.path_nodes[dest_node_id]
+
+    # Check if destination is an ISLAND (not a port) - trigger island encounter
+    if ISLAND_ENCOUNTER_ENABLED && dest_node && dest_node[:type] == :island
+      # Only trigger island encounter if we haven't visited this island yet on this journey
+      args.state.visited_islands ||= []
+      unless args.state.visited_islands.include?(dest_node_id)
+        args.state.visited_islands << dest_node_id
+        start_island_encounter(args, dest_node_id)
+        args.state.auto_travel_paused = true
+        args.state.auto_travel_next_move_at = Kernel.tick_count + TRAVEL_DELAY_TICKS
+        return
+      end
+    end
+
+    # Check for next edge (auto-choose based on journey phase)
     next_edges = get_next_edge_choices(args.state)
 
     if next_edges.empty?

@@ -6,19 +6,46 @@
 # - Ship moves along edges from node to node
 # - Paths are dynamically generated using navigation grid
 
+# Load data loader first (needed by graph_system_dynamic)
+begin
+  require 'app/data_loader.rb'
+rescue
+  require_relative 'data_loader.rb'
+end
+
 # Load dynamic graph system (DragonRuby or standard Ruby)
 begin
   require 'app/graph_system_dynamic.rb'
-rescue LoadError
+rescue
   require_relative 'graph_system_dynamic.rb'
 end
+
+# Graph cache version - increment to force rebuild when logic changes
+GRAPH_CACHE_VERSION = 2  # v2: Limited slots per edge (3 max)
 
 # Generate dynamic graph on load (only once, cached in global variable)
 # Use $ prefix for global variable to persist across file reloads in DragonRuby
 # This prevents the graph from being regenerated on every file reload, which causes flickering
-$dynamic_graph_cache ||= build_dynamic_graph
+# Force rebuild if cache is empty, invalid, or version mismatch
+cache_invalid = !$dynamic_graph_cache ||
+                !$dynamic_graph_cache[:nodes] ||
+                $dynamic_graph_cache[:nodes].empty? ||
+                !$dynamic_graph_cache[:edges] ||
+                $dynamic_graph_cache[:edges].empty? ||
+                $dynamic_graph_cache[:version] != GRAPH_CACHE_VERSION
+if cache_invalid
+  puts "[GRAPH] Building dynamic graph (cache invalid or version #{$dynamic_graph_cache&.dig(:version) || 'nil'} != #{GRAPH_CACHE_VERSION})..."
+  $dynamic_graph_cache = build_dynamic_graph
+  $dynamic_graph_cache[:version] = GRAPH_CACHE_VERSION
+  $dynamic_graph_initialized = false  # Reset flag to allow logging
+end
+
 if $dynamic_graph_cache && !$dynamic_graph_initialized
-  puts "Dynamic graph generated: #{$dynamic_graph_cache[:nodes].length} nodes, #{$dynamic_graph_cache[:edges].length} edges"
+  node_count = $dynamic_graph_cache[:nodes] ? $dynamic_graph_cache[:nodes].length : 0
+  edge_count = $dynamic_graph_cache[:edges] ? $dynamic_graph_cache[:edges].length : 0
+  node_ids = $dynamic_graph_cache[:nodes] ? $dynamic_graph_cache[:nodes].keys.join(', ') : 'none'
+  puts "[GRAPH] Dynamic graph generated: #{node_count} nodes, #{edge_count} edges"
+  puts "[GRAPH] Node IDs: #{node_ids}"
   $dynamic_graph_initialized = true
 end
 

@@ -1,41 +1,33 @@
 # Dynamic Graph System - Generates paths using navigation grid
 #
 # Core Concepts:
-# - Define key waypoint locations (ports, islands)
+# - Load waypoint locations from generated JSON files (ports, islands)
 # - Use pathfinding to generate valid paths between waypoints
 # - Dynamically create edge slots based on path length
 # - Ensure all paths follow accessible ocean routes
+# - Smart connection strategy: ports connect to all ports, islands connect nearby
 
 # Load pathfinding system (DragonRuby or standard Ruby)
 begin
   require 'app/pathfinding_system.rb'
-rescue LoadError
+rescue
   require_relative 'pathfinding_system.rb'
 end
 
-# Define key waypoint locations (these will be validated/adjusted to accessible positions)
-# These are the important story/gameplay locations
-# Journey: Caribbean (left) -> Mid-Atlantic -> European Port (right)
-KEY_WAYPOINTS = {
-  caribbean_port: {
-    id: :caribbean_port,
-    desired_position: { x: 200, y: 360 },  # Left side - Caribbean starting point
-    type: :port,
-    metadata: { name: "Caribbean Port" }
-  },
-  mid_atlantic: {
-    id: :mid_atlantic,
-    desired_position: { x: 640, y: 360 },  # Middle - Mid-Atlantic crossing
-    type: :island,
-    metadata: { name: "Mid-Atlantic" }
-  },
-  european_port: {
-    id: :european_port,
-    desired_position: { x: 1080, y: 360 },  # Right side - European destination
-    type: :port,
-    metadata: { name: "European Port" }
-  }
-}
+# Data loader should already be loaded by graph_system.rb
+# But we'll try to load it here as a fallback if needed
+# Check if method exists using respond_to? (mruby-compatible alternative to defined?)
+unless respond_to?(:load_all_waypoints)
+  begin
+    require 'app/data_loader.rb'
+  rescue
+    begin
+      require_relative 'data_loader.rb'
+    rescue => e
+      puts "[GRAPH] WARNING: Could not load data_loader.rb: #{e.message}"
+    end
+  end
+end
 
 # Find nearest accessible grid cell to a desired position
 # Args:
@@ -73,28 +65,63 @@ def find_nearest_accessible_position(desired_x, desired_y, max_search_radius = 2
 end
 
 # Initialize waypoint nodes with validated positions
+# Loads waypoints from JSON files and validates/adjusts positions to be accessible
 # Returns:
 #   Hash of node_id => node_data with accessible positions
 def initialize_waypoint_nodes
   nodes = {}
 
-  KEY_WAYPOINTS.each do |id, waypoint_def|
-    desired = waypoint_def[:desired_position]
-    accessible_pos = find_nearest_accessible_position(desired[:x], desired[:y])
+  # Load waypoints from generated JSON files
+  begin
+    all_waypoints = load_all_waypoints
+    puts "[GRAPH] Loaded #{all_waypoints.length} waypoints from JSON files"
+    all_waypoints.each do |wp|
+      puts "  - #{wp[:id]}: #{wp[:type]} at (#{wp[:position][:x]}, #{wp[:position][:y]}), #{wp[:grid_squares]&.length || 0} grid squares"
+    end
+  rescue => e
+    puts "[GRAPH] ERROR calling load_all_waypoints: #{e.message}"
+    puts "[GRAPH] Backtrace: #{e.backtrace.first(3).join("\n")}"
+    all_waypoints = []
+  end
+
+  if all_waypoints.empty?
+    puts "[GRAPH] WARNING: No waypoints loaded! Using fallback hardcoded waypoints."
+    # Fallback to hardcoded waypoints if JSON files are missing
+    fallback_waypoints = [
+      { id: :caribbean_port, position: { x: 200, y: 360 }, type: :port, metadata: { name: "Caribbean Port" }, grid_squares: [] },
+      { id: :european_port, position: { x: 1080, y: 360 }, type: :port, metadata: { name: "European Port" }, grid_squares: [] }
+    ]
+    all_waypoints = fallback_waypoints
+  end
+
+  all_waypoints.each do |waypoint|
+    id = waypoint[:id]
+    desired_pos = waypoint[:position]
+
+    # Validate and adjust position to be accessible
+    accessible_pos = find_nearest_accessible_position(desired_pos[:x], desired_pos[:y])
 
     if accessible_pos
       nodes[id] = {
         id: id,
         position: accessible_pos,
-        type: waypoint_def[:type],
-        metadata: waypoint_def[:metadata]
+        type: waypoint[:type],
+        metadata: waypoint[:metadata] || {},
+        grid_squares: waypoint[:grid_squares] || []
       }
-      puts "[GRAPH] Created node #{id} at (#{accessible_pos[:x]}, #{accessible_pos[:y]})"
+
+      # Log if position was adjusted
+      if accessible_pos[:x] != desired_pos[:x] || accessible_pos[:y] != desired_pos[:y]
+        puts "[GRAPH] Adjusted node #{id} from (#{desired_pos[:x]}, #{desired_pos[:y]}) to (#{accessible_pos[:x]}, #{accessible_pos[:y]})"
+      else
+        puts "[GRAPH] Created node #{id} at (#{accessible_pos[:x]}, #{accessible_pos[:y]})"
+      end
     else
-      puts "WARNING: Could not find accessible position for waypoint #{id} at desired position (#{desired[:x]}, #{desired[:y]})"
+      puts "[GRAPH] WARNING: Could not find accessible position for waypoint #{id} at desired position (#{desired_pos[:x]}, #{desired_pos[:y]})"
     end
   end
 
+  puts "[GRAPH] Initialized #{nodes.length} waypoint nodes"
   nodes
 end
 
@@ -128,9 +155,10 @@ def generate_edges(nodes, connections)
     )
 
     if path
-      # Create edge with slots based on path length
-      # Each path segment becomes a slot
-      slots = [path.length - 1, 3].max  # Minimum 3 slots
+      # Create edge with LIMITED slots for player tile placement
+      # Path is kept full for smooth ship interpolation, but slots are capped
+      # Max 3 slots per edge: gives 1-2 spots for player tiles between nodes
+      slots = 3  # Fixed: start area, middle, end area
 
       # Create forward edge (A->B)
       forward_edge = {
@@ -168,31 +196,135 @@ def generate_edges(nodes, connections)
   edges
 end
 
+# Calculate distance between two nodes
+# Args:
+#   node1, node2 - Node hashes with :position keys
+# Returns:
+#   Float distance in screen pixels
+def node_distance(node1, node2)
+  dx = node1[:position][:x] - node2[:position][:x]
+  dy = node1[:position][:y] - node2[:position][:y]
+  Math.sqrt(dx * dx + dy * dy)
+end
+
+# Generate connections between waypoints using smart strategy
+# Strategy:
+#   - All ports connect to all other ports (full mesh)
+#   - Islands connect to nearby ports/islands (within distance threshold)
+# Args:
+#   nodes - Hash of node_id => node_data
+#   max_island_distance - Maximum distance for island connections (default: 500 pixels)
+# Returns:
+#   Array of [from_id, to_id] connection pairs
+def generate_smart_connections(nodes, max_island_distance = 500)
+  connections = []
+  ports = []
+  islands = []
+
+  # Separate ports and islands
+  nodes.each do |id, node|
+    if node[:type] == :port
+      ports << id
+    elsif node[:type] == :island
+      islands << id
+    end
+  end
+
+  puts "[GRAPH] Connection strategy: #{ports.length} ports, #{islands.length} islands"
+
+  # Connect all ports to all other ports (full mesh)
+  ports.each_with_index do |port1, i|
+    ports[(i+1)..-1].each do |port2|
+      connections << [port1, port2]
+    end
+  end
+
+  # Connect islands to nearby ports and islands
+  islands.each do |island_id|
+    island_node = nodes[island_id]
+
+    # Connect to all ports
+    ports.each do |port_id|
+      connections << [island_id, port_id]
+    end
+
+    # Connect to nearby islands
+    islands.each do |other_island_id|
+      next if island_id == other_island_id
+
+      distance = node_distance(island_node, nodes[other_island_id])
+      if distance <= max_island_distance
+        connections << [island_id, other_island_id]
+      end
+    end
+  end
+
+  puts "[GRAPH] Generated #{connections.length} connection pairs"
+  connections
+end
+
+# Find start and end nodes (leftmost and rightmost ports)
+# Args:
+#   nodes - Hash of node_id => node_data
+# Returns:
+#   Hash with :start_node and :end_node symbol IDs
+def find_start_end_nodes(nodes)
+  ports = nodes.select { |id, node| node[:type] == :port }
+
+  if ports.empty?
+    # Fallback: use first and last nodes by ID
+    node_ids = nodes.keys.sort
+    return {
+      start_node: node_ids.first,
+      end_node: node_ids.last
+    }
+  end
+
+  # Find leftmost (lowest x) and rightmost (highest x) ports
+  leftmost = ports.min_by { |id, node| node[:position][:x] }
+  rightmost = ports.max_by { |id, node| node[:position][:x] }
+
+  {
+    start_node: leftmost[0],
+    end_node: rightmost[0]
+  }
+end
+
 # Build dynamic graph with pathfinding
+# Uses waypoints loaded from JSON files and generates connections automatically
 # Returns:
 #   Hash with nodes, edges, and metadata
 def build_dynamic_graph
   # Initialize waypoint nodes at accessible positions
   nodes = initialize_waypoint_nodes
 
-  # Define connections (gameplay route)
-  # Only define forward connections - generate_edges will automatically create bidirectional edges
-  # Outbound journey: Caribbean -> Mid-Atlantic -> European Port
-  # Return journey is automatically created as reverse edges using the same paths
-  connections = [
-    # Outbound path (reverse edges created automatically)
-    [:caribbean_port, :mid_atlantic],
-    [:mid_atlantic, :european_port]
-  ]
+  if nodes.empty?
+    puts "[GRAPH] ERROR: No valid waypoint nodes found!"
+    return {
+      nodes: {},
+      edges: [],
+      start_node: nil,
+      end_node: nil
+    }
+  end
+
+  # Generate connections using smart strategy
+  connections = generate_smart_connections(nodes)
 
   # Generate edges with pathfinding
   edges = generate_edges(nodes, connections)
 
+  # Find start and end nodes (leftmost and rightmost ports)
+  start_end = find_start_end_nodes(nodes)
+
+  puts "[GRAPH] Graph built: #{nodes.length} nodes, #{edges.length} edges"
+  puts "[GRAPH] Start node: #{start_end[:start_node]}, End node: #{start_end[:end_node]}"
+
   {
     nodes: nodes,
     edges: edges,
-    start_node: :caribbean_port,
-    end_node: :european_port  # Victory condition: reach this node
+    start_node: start_end[:start_node],
+    end_node: start_end[:end_node]
   }
 end
 

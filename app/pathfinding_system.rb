@@ -9,15 +9,15 @@
 # Load navigation grid (DragonRuby or standard Ruby)
 begin
   require 'data/navigation_grid.rb'
-rescue LoadError
+rescue
   require_relative '../data/navigation_grid.rb'
 end
 
 # Screen and grid dimensions
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
-MAP_IMAGE_WIDTH = 309
-MAP_IMAGE_HEIGHT = 147
+MAP_IMAGE_WIDTH = 320
+MAP_IMAGE_HEIGHT = 180
 
 # Convert screen coordinates to grid coordinates
 # Args:

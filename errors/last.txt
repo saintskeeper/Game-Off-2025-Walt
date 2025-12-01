@@ -1,7 +1,30 @@
-* EXCEPTION: 'get_edge': wrong number of arguments (1 for 2)
+* EXCEPTION POSSIBLY CAUSED BY CALLING ~rand~ with ~Range~ parameter: Use ~Numeric.rand~ instead.
+The exception message hints at a common error of invoking ~rand~ with a ~Range~ parameter.
+DragonRuby's ~Kernel.rand~ function does NOT support arguments of type ~Range~ (DragonRuby
+leverages mRuby's ~rand~ implementation which doesn't support ~Range~).
+
+In lieu of overriding ~Kernel.rand~, DragonRuby provides ~Numeric.rand~ which supports ranges.
+
+Instead of:
+
+#+begin_src
+  # Kernel.rand function used
+  #   Ranges not supported/possible reason for exception
+  rand(-10..10)
+#+end_src
+
+Do this:
+
+#+begin_src
+  # Numeric.rand function used
+  #   Ranges supported
+  Numeric.rand(-10..10)
+#+end_src
+
+* EXCEPTION THROWN:
+can't convert Range to Integer
 ** Backtrace:
-*** app/graph_system.rb:34:in get_edge
-*** app/navigation_system.rb:31:in advance_ship
-*** app/input_handler.rb:101:in handle_input
-*** app/input_handler.rb:91:in handle_input
-*** app/main.rb:17:in tick
+*** app/encounter_system/encounter_system.rb:78:in generate_island_reward
+*** app/encounter_system/encounter_system.rb:62:in start_island_encounter
+*** app/auto_travel_system.rb:65:in update_auto_travel
+*** app/main.rb:24:in tick
